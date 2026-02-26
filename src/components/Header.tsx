@@ -34,11 +34,8 @@ export default function Header() {
       <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
         {/* Logo */}
         <Link href="/homepage" className="flex items-center gap-3 group">
-          <div className="w-8 h-8 bg-[rgba(0,230,118,0.1)] border border-[rgba(0,230,118,0.3)] rounded flex items-center justify-center">
-            <span className="font-mono text-[#00E676] text-xs font-bold">A</span>
-          </div>
           <span className="font-mono text-[#00E676] font-bold text-lg tracking-tight">
-            AASE<span className="animate-blink text-[#00E676]">_</span>
+            AASE
           </span>
         </Link>
 
