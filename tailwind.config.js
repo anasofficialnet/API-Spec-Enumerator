@@ -9,15 +9,15 @@ const config = {
     extend: {
       colors: {
         aase: {
-          base: '#080C0A',
-          surface: '#0D1410',
-          surface2: '#111A16',
-          border: 'rgba(0, 230, 118, 0.12)',
-          accent: '#00E676',
-          accentDim: 'rgba(0, 230, 118, 0.08)',
-          text: '#E8F5E9',
-          muted: '#5A7A65',
-          dim: '#2E4A38',
+          base: '#030509',
+          surface: '#0B1120',
+          surface2: '#111827',
+          border: 'rgba(99, 102, 241, 0.12)',
+          accent: '#6366F1',
+          accentDim: 'rgba(99, 102, 241, 0.08)',
+          text: '#F8FAFC',
+          muted: '#94A3B8',
+          dim: '#475569',
           red: '#FF4F4F',
           orange: '#FF8C42',
           yellow: '#FFD166',
@@ -49,8 +49,8 @@ const config = {
           '100%': { top: '100%' },
         },
         pulseGlow: {
-          '0%, 100%': { boxShadow: '0 0 8px rgba(0, 230, 118, 0.3)' },
-          '50%': { boxShadow: '0 0 20px rgba(0, 230, 118, 0.7)' },
+          '0%, 100%': { boxShadow: '0 0 8px rgba(99, 102, 241, 0.3)' },
+          '50%': { boxShadow: '0 0 20px rgba(99, 102, 241, 0.7)' },
         },
         fadeInUp: {
           from: { opacity: '0', transform: 'translateY(20px)' },
@@ -59,7 +59,7 @@ const config = {
       },
       backgroundImage: {
         'grid-pattern':
-          'linear-gradient(rgba(0, 230, 118, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 230, 118, 0.03) 1px, transparent 1px)',
+          'linear-gradient(rgba(99, 102, 241, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(99, 102, 241, 0.03) 1px, transparent 1px)',
       },
       backgroundSize: {
         grid: '40px 40px',

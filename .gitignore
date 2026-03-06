@@ -1,23 +1,42 @@
-﻿# Node modules
+# Dependencies
 node_modules/
-package-lock.json
+backend/venv/
+backend/.venv/
 
-# Next.js build output
+# Next.js and build output
 .next/
 out/
-
-# Production build
+dist/
 build/
+coverage/
+.turbo/
+.cache/
+
+# Environment
+.env
+.env.local
 
 # Logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
 # OS-specific files
 .DS_Store
 Thumbs.db
+ehthumbs.db
+Desktop.ini
 
 # Vercel deployment
 .vercel/
@@ -26,7 +45,6 @@ Thumbs.db
 *.tsbuildinfo
 
 # Optional: if using testing tools
-coverage/
 jest-test-results.json
 
 # Optional: if using IDEs
@@ -35,5 +53,3 @@ jest-test-results.json
 
 # Optional: if using TurboRepo or monorepo
 turbo/node_modules/
-.next/
-.env

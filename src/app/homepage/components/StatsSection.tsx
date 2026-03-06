@@ -46,24 +46,24 @@ function Counter({ target, suffix, decimal }: { target: number; suffix: string; 
 
 export default function StatsSection() {
   return (
-    <section className="py-20 px-6 border-t border-[rgba(0,230,118,0.08)] bg-[rgba(0,230,118,0.02)]">
+    <section className="py-20 px-6 border-t border-[rgba(99, 102, 241,0.08)] bg-[rgba(99, 102, 241,0.02)]">
       <div className="max-w-7xl mx-auto">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-12">
           {STATS.map((stat, i) => (
             <div key={stat.label} className="relative">
               {i === 0 && (
                 <div
-                  className="absolute -top-6 left-0 w-3 h-3 bg-[#00E676]"
-                  style={{ boxShadow: "0 0 12px rgba(0,230,118,0.6)" }}
+                  className="absolute -top-6 left-0 w-3 h-3 bg-[#6366F1]"
+                  style={{ boxShadow: "0 0 12px rgba(99, 102, 241,0.6)" }}
                 />
               )}
-              <div className="font-mono text-5xl md:text-7xl font-black text-[#00E676] mb-2 leading-none">
+              <div className="font-mono text-5xl md:text-7xl font-black text-[#6366F1] mb-2 leading-none">
                 <Counter target={stat.value} suffix={stat.suffix} decimal={stat.decimal} />
               </div>
-              <p className="font-mono text-xs text-[#5A7A65] uppercase tracking-widest border-t border-[rgba(0,230,118,0.08)] pt-3 mb-1">
+              <p className="font-mono text-xs text-[#94A3B8] uppercase tracking-widest border-t border-[rgba(99, 102, 241,0.08)] pt-3 mb-1">
                 {stat.label}
               </p>
-              <p className="font-mono text-[10px] text-[#2E4A38] uppercase tracking-widest">
+              <p className="font-mono text-[10px] text-[#475569] uppercase tracking-widest">
                 {stat.sublabel}
               </p>
             </div>

@@ -1,83 +1,135 @@
-﻿# Next.js
+<div align="center">
+  <img src="https://raw.githubusercontent.com/anasofficialnet/API-Spec-Enumerator/main/public/icon.png" width="120" alt="AASE Logo"/>
+  <h1><b>AASE - Adaptive API Spec Enumerator</b></h1>
+  <p><i>A powerful, local-first API traffic analysis and fuzzing tool.</i></p>
 
-A modern Next.js 15 application built with TypeScript and Tailwind CSS.
+  [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+  [![React](https://img.shields.io/badge/React-19-blue.svg)](https://react.dev)
+  [![Next.js](https://img.shields.io/badge/Next.js-15-black.svg)](https://nextjs.org)
+  [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)](https://fastapi.tiangolo.com)
+</div>
 
-## 🚀 Features
+<hr/>
 
-- **Next.js 15** - Latest version with improved performance and features
-- **React 19** - Latest React version with enhanced capabilities
-- **Tailwind CSS** - Utility-first CSS framework for rapid UI development
+## ✨ What is AASE?
 
-## 🛠️ Installation
+**AASE (Adaptive API Spec Enumerator)** is a fast, offline-capable security tool designed to analyze API traffic and automatically discover attack surfaces. 
 
-1. Install dependencies:
-  ```bash
-  npm install
-  # or
-  yarn install
-  ```
+It takes captured HTTP traffic (from browsers, Burp Suite, or mitmproxy) as input, groups requests into normalized API endpoints, automatically crafts fuzzing test cases, and runs them against the target all from a sleek, futuristic **3D animated** dashboard!
 
-2. Start the development server:
-  ```bash
-  npm run dev
-  # or
-  yarn dev
-  ```
-3. Open [http://localhost:4028](http://localhost:4028) with your browser to see the result.
+The project consists of two powerful components running locally:
+1. **The Frontend**: A blazingly fast `Next.js` and `React 19` interface featuring an interactive 3D particle network background.
+2. **The Backend**: A completely local `FastAPI` server for rapid parsing, payload generation, and execution.
 
-## 📁 Project Structure
+---
 
+## 🚀 Key Features
+
+### 🌌 3D Cyberpunk Dashboard
+The frontend doesn't just look like a standard web app—it features an interactive, fully adaptive **3D particle network**. As you move your mouse, the 3D geometric nodes rotate, tilt, and glow with depth-sorting, giving you a true cyber-security command center feel!
+
+### 📥 Universal Traffic Ingestion
+Upload your captured API traffic with drag-and-drop ease. Supported formats:
+- **HAR (`.har`)**: Best format, exported straight from browser DevTools.
+- **Burp Suite XML (`.xml`)**: Export your Burp history directly.
+- **mitmproxy JSON (`.json`)**: Raw mitmproxy dumps.
+- **JSON Lines (`.jsonl`, `.ndjson`)**: One request record per line.
+- **Raw HTTP Paste**: Paste raw HTTP requests straight into the dashboard.
+
+### 🧠 Smart Endpoint Discovery
+AASE intelligently parses hundreds of requests and normalizes dynamic segments. 
+For example:
+- `GET /api/users/1` and `GET /api/users/42` automatically become `GET /api/users/{id}`.
+It automatically calculates exactly how many potential fuzzing vectors are present on every discovered endpoint.
+
+### 🛡️ Safe & Aggressive Probe Generation
+- **Safe Mode**: Checks for basic baseline responses, missing CORS headers, hidden parameters, and simple authentication bypasses.
+- **Aggressive Mode**: Intelligently mutates body payloads and query strings looking for edge-case vulnerabilities like **SQLi, XSS, and SSTI**.
+- **Dry Run**: Validate your targets, parsed parameters, and generated test queries without sending a single byte of real traffic.
+
+### 📊 Operator-Friendly Reporting
+Get real-time feedback during live scans via Server-Sent Events (SSE). Once complete, you have an elegant "Findings" tab, from which you can export findings as:
+- A raw **JSON** report for further scripting.
+- A beautiful single-file **HTML** report to send off to your security team.
+
+---
+
+## 🛠️ How It Works (Architecture)
+
+- **Frontend Environment**: Next.js 15 running locally on `http://localhost:4028`.
+- **Backend API**: Python FastAPI running locally on `http://127.0.0.1:8010`.
+- **Local Dev Proxy**: Next.js automatically rewrites `/api/*` to the FastAPI backend, bypassing CORS and simplifying deployment architecture. This prevents tracking and ensures all data stays purely on your machine.
+
+---
+
+## 💻 How Can You Use It?
+
+### Prerequisites
+
+You need the following installed:
+- Node.js (v18+) and npm
+- Python (v3.10+) and pip
+
+### Installation
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/anasofficialnet/API-Spec-Enumerator.git
+   cd API-Spec-Enumerator
+   ```
+
+2. **Install Frontend Dependencies:**
+   ```bash
+   npm install
+   ```
+
+3. **Install Backend Dependencies:**
+   ```bash
+   cd backend
+   pip install -r requirements.txt
+   cd ..
+   ```
+
+### Running the App Locally
+
+To start the local command center, you can run a single command that orchestrates both frontend and backend:
+
+```bash
+npm run dev
 ```
-nextjs/
-├── public/             # Static assets
-├── src/
-│   ├── app/            # App router components
-│   │   ├── layout.tsx  # Root layout component
-│   │   └── page.tsx    # Main page component
-│   ├── components/     # Reusable UI components
-│   ├── styles/         # Global styles and Tailwind configuration
-├── next.config.mjs     # Next.js configuration
-├── package.json        # Project dependencies and scripts
-├── postcss.config.js   # PostCSS configuration
-└── tailwind.config.js  # Tailwind CSS configuration
 
-```
+*(This uses `concurrently` to bring up the FastAPI backend on port 8010, and Next.js on port 4028.)*
 
-## 🧩 Page Editing
+Open your browser to: **[http://localhost:4028](http://localhost:4028)**
 
-You can start editing the page by modifying `src/app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-## 🎨 Styling
+## 🧪 Testing an Example
 
-This project uses Tailwind CSS for styling with the following features:
-- Utility-first approach for rapid development
-- Custom theme configuration
-- Responsive design utilities
-- PostCSS and Autoprefixer integration
+Want to see it in action without a target? We got you.
 
-## 📦 Available Scripts
+1. Once the app is running, navigate to the Dashboard.
+2. Drag and drop the provided example file located at `examples/sample.har`.
+3. AASE will immediately parse out the simulated architecture:
+   - `GET /api/users`
+   - `GET /api/users/{id}`
+   - `POST /api/users`
+   - `POST /api/auth/login`
+4. Set **Dry Run Mode** to `On` and hit "Start New Scan".
+5. Watch the 3D dashboard adapt while generating the security probe cases!
 
-- `npm run dev` - Start development server on port 4028
-- `npm run build` - Build the application for production
-- `npm run start` - Start the development server
-- `npm run serve` - Start the production server
-- `npm run lint` - Run ESLint to check code quality
-- `npm run lint:fix` - Fix ESLint issues automatically
-- `npm run format` - Format code with Prettier
+---
 
-## 📱 Deployment
+## 🔒 Security & Safety Notes
 
-Build the application for production:
+- **Never fuzz applications without authorization!** This tool is strictly intended for local development, research, and authorized penetration testing on systems you explicitly control!
+- AASE strictly respects standard `robots.txt` paths by default during live scans to prevent unexpected crawling.
+- No remote telemetry or analytics exist in AASE. All scan logic, parameters, and results reside locally within memory. Backend state drops completely upon restarting the process.
 
-  ```bash
-  npm run build
-  ```
+---
 
-## 📚 Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial
-
-You can check out the [Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+<br/>
+<div align="center">
+  <b>Built with ❤️ by Anas, focusing on the future of clean, automated AppSec.</b><br/>
+  <a href="https://github.com/anasofficialnet/API-Spec-Enumerator/issues">Report an issue</a> • <a href="https://github.com/anasofficialnet/API-Spec-Enumerator/pulls">Submit a pull request</a>
+</div>

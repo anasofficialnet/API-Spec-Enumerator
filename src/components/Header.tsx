@@ -3,11 +3,14 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import dynamic from "next/dynamic";
 
-import Icon from "@/components/ui/AppIcon";
+const Icon = dynamic(() => import("@/components/ui/AppIcon"), {
+  ssr: false,
+});
 
 const navLinks = [
-  { label: "Home", href: "/homepage" },
+  { label: "Home", href: "/" },
   { label: "Dashboard", href: "/dashboard" },
   { label: "Reports", href: "/reports" },
 ];
@@ -25,33 +28,24 @@ export default function Header() {
 
   return (
     <header
-      className={`fixed top-0 left-0 w-full z-50 transition-all duration-300 ${
-        scrolled
-          ? "bg-[#080C0A]/95 backdrop-blur-md border-b border-[rgba(0,230,118,0.12)]"
+      className={`fixed top-0 left-0 w-full z-50 transition-all duration-300 ${scrolled
+          ? "chrome-bar border-b"
           : "bg-transparent"
-      }`}
+        }`}
     >
-      <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-        {/* Logo */}
-        <Link href="/homepage" className="flex items-center gap-3 group">
-          <span className="font-mono text-[#00E676] font-bold text-lg tracking-tight">
-            AASE
-          </span>
-        </Link>
-
+      <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-end gap-4">
         {/* Desktop Nav */}
-        <nav className="hidden md:flex items-center gap-1">
+        <nav className="hidden md:flex items-center gap-1 mr-auto">
           {navLinks?.map((link) => {
             const isActive = pathname === link?.href;
             return (
               <Link
                 key={link?.href}
                 href={link?.href}
-                className={`font-mono text-xs px-4 py-2 rounded transition-all duration-200 tracking-widest uppercase font-semibold ${
-                  isActive
-                    ? "text-[#00E676] bg-[rgba(0,230,118,0.1)] border border-[rgba(0,230,118,0.2)]"
-                    : "text-[#5A7A65] hover:text-[#00E676] hover:bg-[rgba(0,230,118,0.05)]"
-                }`}
+                className={`nav-pill font-mono text-xs tracking-widest uppercase font-semibold ${isActive
+                    ? "nav-pill-active"
+                    : ""
+                  }`}
               >
                 {link?.label}
               </Link>
@@ -61,13 +55,13 @@ export default function Header() {
 
         {/* CTA */}
         <div className="hidden md:flex items-center gap-3">
-          <div className="flex items-center gap-2 font-mono text-[10px] text-[#5A7A65] uppercase tracking-widest">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#00E676] animate-pulse" />
+          <div className="flex items-center gap-2 font-mono text-[10px] text-[#94A3B8] uppercase tracking-widest">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#6366F1] animate-pulse" />
             v2.4.1 live
           </div>
           <Link
             href="/dashboard"
-            className="hacker-btn text-xs py-2 px-5"
+            className="btn btn-primary font-mono text-xs uppercase tracking-[0.08em]"
           >
             Launch Dashboard
           </Link>
@@ -75,7 +69,7 @@ export default function Header() {
 
         {/* Mobile toggle */}
         <button
-          className="md:hidden text-[#5A7A65] hover:text-[#00E676] transition-colors p-2"
+          className="md:hidden ml-auto text-[#94A3B8] hover:text-[#6366F1] transition-colors p-2"
           onClick={() => setMobileOpen(!mobileOpen)}
           aria-label="Toggle menu"
         >
@@ -84,7 +78,7 @@ export default function Header() {
       </div>
       {/* Mobile Menu */}
       {mobileOpen && (
-        <div className="md:hidden bg-[#0D1410] border-t border-[rgba(0,230,118,0.12)] px-6 py-4 flex flex-col gap-2">
+        <div className="md:hidden mx-4 mb-4 rounded-3xl border border-[rgba(255,255,255,0.08)] bg-[rgba(7,12,20,0.68)] backdrop-blur-xl px-4 py-4 flex flex-col gap-2">
           {navLinks?.map((link) => {
             const isActive = pathname === link?.href;
             return (
@@ -92,11 +86,10 @@ export default function Header() {
                 key={link?.href}
                 href={link?.href}
                 onClick={() => setMobileOpen(false)}
-                className={`font-mono text-xs px-4 py-3 rounded transition-all uppercase tracking-widest font-semibold ${
-                  isActive
-                    ? "text-[#00E676] bg-[rgba(0,230,118,0.1)]"
-                    : "text-[#5A7A65] hover:text-[#00E676]"
-                }`}
+                className={`nav-pill justify-start font-mono text-xs px-4 py-3 uppercase tracking-widest font-semibold ${isActive
+                    ? "nav-pill-active"
+                    : ""
+                  }`}
               >
                 {link?.label}
               </Link>
@@ -105,7 +98,7 @@ export default function Header() {
           <Link
             href="/dashboard"
             onClick={() => setMobileOpen(false)}
-            className="hacker-btn text-xs py-3 text-center mt-2"
+            className="btn btn-primary font-mono text-xs uppercase tracking-[0.08em] text-center mt-2"
           >
             Launch Dashboard
           </Link>

@@ -9,7 +9,7 @@ export const metadata = {
 
 export default function DashboardPage() {
   return (
-    <div className="min-h-screen bg-[#080C0A] scanlines">
+    <div className="min-h-screen">
       <Header />
       <DashboardInteractive />
       <Footer />

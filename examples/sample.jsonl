@@ -1,0 +1,5 @@
+{"method":"GET","url":"http://localhost:5000/api/users","headers":{"Accept":"application/json","Authorization":"Bearer token_example_123"},"status":200}
+{"method":"POST","url":"http://localhost:5000/api/users","headers":{"Content-Type":"application/json","Authorization":"Bearer token_example_123"},"body":{"name":"Charlie","email":"charlie@example.com","role":"user"},"status":201}
+{"method":"GET","url":"http://localhost:5000/api/users/42","headers":{"Accept":"application/json","Authorization":"Bearer token_example_123"},"status":200}
+{"method":"DELETE","url":"http://localhost:5000/api/users/42","headers":{"Authorization":"Bearer token_example_123"},"status":204}
+{"method":"GET","url":"http://localhost:5000/api/products?category=tools&page=2","headers":{"Accept":"application/json"},"status":200}

@@ -8,7 +8,6 @@
       "next",
       "react",
       "react-dom",
-      "@dhiwise/component-tagger",
       "@tailwindcss/typography",
       "recharts"
     ],
@@ -40,9 +39,15 @@
     "warning": "CRITICAL: DO NOT REMOVE OR MODIFY ABOVE DEPENDENCIES - Required for Next.js 15 TypeScript app functionality"
   },
   "scripts": {
-    "dev": "next dev -p 4028",
+    "clean": "npx rimraf .next out dist build coverage backend/__pycache__ backend/.pytest_cache",
+    "dev:fe": "next dev -p 4028",
+    "dev:be": "python -m uvicorn backend.main:app --host 127.0.0.1 --port 8010 --reload",
+    "dev": "concurrently -n FE,BE -c cyan,green --kill-others-on-fail \"npm run dev:fe\" \"npm run dev:be\"",
     "build": "next build",
     "start": "next start -p 4028",
+    "prod:fe": "next build && next start -p 4028",
+    "prod:be": "python -m uvicorn backend.main:app --host 127.0.0.1 --port 8010 --workers 4",
+    "prod": "concurrently -n FE,BE -c cyan,green --kill-others-on-fail \"npm run prod:fe\" \"npm run prod:be\"",
     "lint": "next lint",
     "lint:fix": "next lint --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,css,md,json}\"",
@@ -50,9 +55,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@dhiwise/component-tagger": "^1.0.14",
     "@heroicons/react": "^2.2.0",
-    "@tailwindcss/forms": "^0.5.10",
     "@tailwindcss/typography": "^0.5.16",
     "next": "15.1.11",
     "react": "19.0.3",
@@ -60,14 +63,13 @@
     "recharts": "^2.15.2"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3",
-    "@netlify/plugin-nextjs": "^5.11.1",
     "@types/node": "^20",
     "@types/react": "19.0.3",
     "@types/react-dom": "19.0.3",
     "@typescript-eslint/eslint-plugin": "^8.29.0",
     "@typescript-eslint/parser": "^8.29.0",
     "autoprefixer": "10.4.2",
+    "concurrently": "^9.1.2",
     "eslint": "^9",
     "eslint-config-next": "^15.2.4",
     "eslint-config-prettier": "^10.1.1",
@@ -75,7 +77,6 @@
     "postcss": "8.4.8",
     "prettier": "^3.5.3",
     "tailwindcss": "3.4.6",
-    "tailwindcss-animate": "^1.0.7",
     "typescript": "^5"
   }
 }

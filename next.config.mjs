@@ -2,7 +2,6 @@ import { imageHosts } from './image-hosts.config.js';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  productionBrowserSourceMaps: true,
   distDir: process.env.DIST_DIR || '.next',
   typescript: {
     ignoreBuildErrors: true,
@@ -13,17 +12,13 @@ const nextConfig = {
   images: {
     remotePatterns: imageHosts,
   },
-  webpack(config) {
-    config.module.rules.push({
-      test: /\.(jsx|tsx)$/,
-      exclude: [/node_modules/],
-      use: [
-        {
-          loader: '@dhiwise/component-tagger/nextLoader',
-        },
-      ],
-    });
-    return config;
+  async rewrites() {
+    return [
+      {
+        source: "/api/:path*",
+        destination: "http://127.0.0.1:8010/:path*",
+      },
+    ];
   },
 };
 

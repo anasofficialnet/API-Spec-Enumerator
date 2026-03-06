@@ -1,5 +1,6 @@
 import React from 'react';
 import type { Metadata, Viewport } from 'next';
+import AppChrome from '@/components/AppChrome';
 import '../styles/index.css';
 
 export const viewport: Viewport = {
@@ -10,11 +11,6 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: 'Next.js with Tailwind CSS',
   description: 'A boilerplate project with Next.js and Tailwind CSS',
-  icons: {
-    icon: [
-      { url: '/assets/images/app_logo.png', type: 'image/x-icon' }
-    ],
-  },
 };
 
 export default function RootLayout({
@@ -24,8 +20,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}
-</body>
+      <body>
+        <AppChrome>{children}</AppChrome>
+      </body>
     </html>
   );
 }
