@@ -9,24 +9,26 @@
   [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)](https://fastapi.tiangolo.com)
 </div>
 
+<div align="center">
+  <b>🟢 Live App: <a href="https://api-spec-enumerator-vxy9.vercel.app">api-spec-enumerator-vxy9.vercel.app</a></b><br/>
+  <b>🟢 Live API: <a href="https://aase-backend.onrender.com/docs">aase-backend.onrender.com/docs</a></b>
+</div>
+
 <hr/>
 
 ## ✨ What is AASE?
 
 **AASE (Adaptive API Spec Enumerator)** is a fast, offline-capable security tool designed to analyze API traffic and automatically discover attack surfaces. 
 
-It takes captured HTTP traffic (from browsers, Burp Suite, or mitmproxy) as input, groups requests into normalized API endpoints, automatically crafts fuzzing test cases, and runs them against the target all from a sleek, futuristic **3D animated** dashboard!
+It takes captured HTTP traffic (from browsers, Burp Suite, or mitmproxy) as input, groups requests into normalized API endpoints, automatically crafts fuzzing test cases, and runs them against the target.
 
-The project consists of two powerful components running locally:
-1. **The Frontend**: A blazingly fast `Next.js` and `React 19` interface featuring an interactive 3D particle network background.
-2. **The Backend**: A completely local `FastAPI` server for rapid parsing, payload generation, and execution.
+The project consists of two powerful components:
+1. **The Frontend**: A blazingly fast `Next.js` and `React 19` interface.
+2. **The Backend**: A `FastAPI` server for rapid parsing, payload generation, and execution.
 
 ---
 
 ## 🚀 Key Features
-
-### 🌌 3D Cyberpunk Dashboard
-The frontend doesn't just look like a standard web app—it features an interactive, fully adaptive **3D particle network**. As you move your mouse, the 3D geometric nodes rotate, tilt, and glow with depth-sorting, giving you a true cyber-security command center feel!
 
 ### 📥 Universal Traffic Ingestion
 Upload your captured API traffic with drag-and-drop ease. Supported formats:
