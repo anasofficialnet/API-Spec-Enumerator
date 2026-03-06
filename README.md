@@ -10,8 +10,7 @@
 </div>
 
 <div align="center">
-  <b>🟢 Live App: <a href="https://api-spec-enumerator-vxy9.vercel.app">api-spec-enumerator-vxy9.vercel.app</a></b><br/>
-  <b>🟢 Live API: <a href="https://aase-backend.onrender.com/docs">aase-backend.onrender.com/docs</a></b>
+  <b>🟢 Live App: <a href="https://api-spec-enumerator.vercel.app">api-spec-enumerator.vercel.app</a></b>
 </div>
 
 <hr/>
