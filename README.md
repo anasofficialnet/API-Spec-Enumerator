@@ -1,5 +1,4 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/anasofficialnet/API-Spec-Enumerator/main/public/icon.png" width="120" alt="AASE Logo"/>
   <h1><b>AASE - Adaptive API Spec Enumerator</b></h1>
   <p><i>A powerful, local-first API traffic analysis and fuzzing tool.</i></p>
 
@@ -57,9 +56,15 @@ Get real-time feedback during live scans via Server-Sent Events (SSE). Once comp
 
 ## 🛠️ How It Works (Architecture)
 
-- **Frontend Environment**: Next.js 15 running locally on `http://localhost:4028`.
-- **Backend API**: Python FastAPI running locally on `http://127.0.0.1:8010`.
-- **Local Dev Proxy**: Next.js automatically rewrites `/api/*` to the FastAPI backend, bypassing CORS and simplifying deployment architecture. This prevents tracking and ensures all data stays purely on your machine.
+> [!IMPORTANT]
+> **Cloud Deployment (Free Tier Sleep Warning)**
+> The live deployment of this application runs its frontend on Vercel and its backend on Render's free tier. 
+> Render's free servers **automatically spin down and go to sleep** after 15 minutes of inactivity. 
+> 
+> If you visit the site and try to upload a file for the first time in a while, it may take **45 to 60 seconds** for the backend to wake up. Please be patient on the first upload! Every subsequent request will be lightning fast.
+
+- **Frontend Environment**: Next.js 15, hosted on Vercel Edge.
+- **Backend API**: Python FastAPI, hosted as a Python 3 Web Service on Render.
 
 ---
 
