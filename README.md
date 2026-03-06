@@ -10,7 +10,7 @@
 </div>
 
 <div align="center">
-  <b>🟢 Live App: <a href="https://api-spec-enumerator-hec48g8h8-anasofficialnets-projects.vercel.app">api-spec-enumerator-hec48g8h8-anasofficialnets-projects.vercel.app</a></b>
+  <b>🟢 Live App: <a href="https://api-spec-enumerator.vercel.app">api-spec-enumerator.vercel.app</a></b>
 </div>
 
 <hr/>
