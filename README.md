@@ -52,10 +52,9 @@ Get real-time feedback during live scans via Server-Sent Events (SSE). Once a sc
 - **Export JSON**: Downloads a complete, machine-readable `aase_report_xyz.json` file containing all discovered vectors, request/response pairs, and metadata. Perfect for piping into other CLI tools or custom scripts.
 - **Export HTML**: Generates a beautiful, single-file, standalone HTML executive report. It color-codes findings by severity (Critical to Info), includes embedded CVSS/CWE data, and provides remediation advice. You can immediately email this to developers.
 
-### ⚙️ Advanced Fuzzing Configuration (`fuzz_config.yaml`)
-For advanced operators, AASE supports a highly tunable fuzzing engine via a backend configuration file:
-- **Rate Limiting & Concurrency**: Tune requests-per-second to match your target's capacity.
-- **Payload Dictionaries**: Customize the exact SQLi, XSS, and SSTI payloads AASE uses during Aggressive Mode.
+### ⚙️ Advanced Fuzzing Configuration
+For advanced operators, AASE supports a highly tunable fuzzing engine via its backend configuration architecture:
+- **Payload Dictionaries**: The engine utilizes custom SQLi, XSS, and SSTI payloads during Aggressive Mode.
 - **Target Overrides**: Seamlessly rewrite the base URL (e.g., from `localhost` to `staging.api.com`) during test execution without altering your ingested capture files.
 
 ---
