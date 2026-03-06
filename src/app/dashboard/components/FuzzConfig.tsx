@@ -74,7 +74,7 @@ export default function FuzzConfig({ selectedCount, totalCases, onStart, isRunni
         <div className="terminal-dot" style={{ background: "#FFBD2E" }} />
         <div className="terminal-dot" style={{ background: "#27C93F" }} />
         <span className="font-mono text-[10px] text-[#475569] uppercase tracking-widest ml-3">
-          fuzz_config.yaml
+          ADVANCED_CONFIG
         </span>
       </div>
 
@@ -155,10 +155,9 @@ export default function FuzzConfig({ selectedCount, totalCases, onStart, isRunni
               <button
                 key={cat.id}
                 onClick={() => toggleCategory(cat.id)}
-                className={`font-mono text-[10px] px-2.5 py-1 rounded border uppercase tracking-wider transition-all ${
-                  config.categories.includes(cat.id)
-                    ? "border-current opacity-100" :"opacity-30 border-[rgba(99, 102, 241,0.1)]"
-                }`}
+                className={`font-mono text-[10px] px-2.5 py-1 rounded border uppercase tracking-wider transition-all ${config.categories.includes(cat.id)
+                    ? "border-current opacity-100" : "opacity-30 border-[rgba(99, 102, 241,0.1)]"
+                  }`}
                 style={config.categories.includes(cat.id) ? { color: cat.color, borderColor: cat.color, background: `${cat.color}15` } : { color: "#94A3B8" }}
               >
                 {cat.label}
@@ -178,14 +177,12 @@ export default function FuzzConfig({ selectedCount, totalCases, onStart, isRunni
           </div>
           <button
             onClick={() => setConfig((p) => ({ ...p, aggressive: !p.aggressive }))}
-            className={`w-10 h-5 rounded-full transition-all duration-300 relative ${
-              config.aggressive ? "bg-[#FF4F4F]" : "bg-[rgba(99, 102, 241,0.15)]"
-            }`}
+            className={`w-10 h-5 rounded-full transition-all duration-300 relative ${config.aggressive ? "bg-[#FF4F4F]" : "bg-[rgba(99, 102, 241,0.15)]"
+              }`}
           >
             <span
-              className={`absolute top-0.5 w-4 h-4 rounded-full transition-all duration-300 ${
-                config.aggressive ? "left-5.5 bg-[#030509]" : "left-0.5 bg-[#6366F1]"
-              }`}
+              className={`absolute top-0.5 w-4 h-4 rounded-full transition-all duration-300 ${config.aggressive ? "left-5.5 bg-[#030509]" : "left-0.5 bg-[#6366F1]"
+                }`}
               style={{ left: config.aggressive ? "22px" : "2px" }}
             />
           </button>
@@ -199,14 +196,12 @@ export default function FuzzConfig({ selectedCount, totalCases, onStart, isRunni
           </div>
           <button
             onClick={() => setConfig((p) => ({ ...p, dryRun: !p.dryRun }))}
-            className={`w-10 h-5 rounded-full transition-all duration-300 relative ${
-              config.dryRun ? "bg-[#FFD166]" : "bg-[rgba(99, 102, 241,0.15)]"
-            }`}
+            className={`w-10 h-5 rounded-full transition-all duration-300 relative ${config.dryRun ? "bg-[#FFD166]" : "bg-[rgba(99, 102, 241,0.15)]"
+              }`}
           >
             <span
-              className={`absolute top-0.5 w-4 h-4 rounded-full transition-all duration-300 ${
-                config.dryRun ? "left-5.5 bg-[#030509]" : "left-0.5 bg-[#6366F1]"
-              }`}
+              className={`absolute top-0.5 w-4 h-4 rounded-full transition-all duration-300 ${config.dryRun ? "left-5.5 bg-[#030509]" : "left-0.5 bg-[#6366F1]"
+                }`}
               style={{ left: config.dryRun ? "22px" : "2px" }}
             />
           </button>
@@ -223,11 +218,10 @@ export default function FuzzConfig({ selectedCount, totalCases, onStart, isRunni
         <button
           onClick={() => onStart(config)}
           disabled={selectedCount === 0 || isRunning}
-          className={`w-full py-3 font-mono text-sm font-bold uppercase tracking-widest rounded transition-all duration-300 flex items-center justify-center gap-2 ${
-            selectedCount === 0 || isRunning
+          className={`w-full py-3 font-mono text-sm font-bold uppercase tracking-widest rounded transition-all duration-300 flex items-center justify-center gap-2 ${selectedCount === 0 || isRunning
               ? "bg-[rgba(99, 102, 241,0.05)] text-[#475569] cursor-not-allowed border border-[rgba(99, 102, 241,0.08)]"
               : "hacker-btn w-full"
-          }`}
+            }`}
         >
           {isRunning ? (
             <>
