@@ -17,7 +17,7 @@ interface ScanStatus {
   findings: Finding[];
 }
 
-type Tab = "upload" | "endpoints" | "fuzz" | "findings";
+type Tab = "upload" | "endpoints" | "fuzz" | "findings" | "shadow" | "patches";
 
 export default function DashboardInteractive() {
   const [scanId, setScanId] = useState<string | null>(null);
@@ -31,6 +31,8 @@ export default function DashboardInteractive() {
   const [totalCases, setTotalCases] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
+  const [shadowReport, setShadowReport] = useState<any>(null);
+  const [patches, setPatches] = useState<any[]>([]);
 
   const handleUploadComplete = useCallback((data: TrafficData) => {
     setTrafficData(data);
@@ -111,6 +113,16 @@ export default function DashboardInteractive() {
             custom_cookies: config.customCookies || {},
             dry_run: config.dryRun,
             categories: config.categories,
+            enable_bola: config.enableBola,
+            bola_config: config.enableBola && config.bolaUserBToken ? {
+              user_a_auth: buildAuthConfig(config),
+              user_b_auth: { bearer: config.bolaUserBToken },
+            } : null,
+            enable_stateful: config.enableStateful,
+            enable_race: config.enableRace,
+            burst_size: config.burstSize,
+            enable_mutations: config.enableMutations,
+            enable_graphql: config.enableGraphql,
           },
         }),
       });
@@ -170,6 +182,8 @@ export default function DashboardInteractive() {
     { id: "endpoints", label: "Endpoints", icon: "ListBulletIcon", count: trafficData?.endpoints.length, disabled: !trafficData },
     { id: "fuzz", label: "Fuzz Config", icon: "BoltIcon", disabled: !trafficData },
     { id: "findings", label: "Findings", icon: "ExclamationTriangleIcon", count: findings.length, disabled: !trafficData },
+    { id: "shadow" as Tab, label: "Shadow API", icon: "EyeSlashIcon", disabled: !trafficData },
+    { id: "patches" as Tab, label: "Patches", icon: "WrenchScrewdriverIcon", count: patches.length, disabled: !trafficData || findings.length === 0 },
   ];
 
   const selectedEpData: EndpointData[] = trafficData?.endpoints.filter((e) => selectedEndpoints.includes(e.id)) ?? [];
@@ -187,10 +201,10 @@ export default function DashboardInteractive() {
                 onClick={() => !tab.disabled && setActiveTab(tab.id)}
                 disabled={tab.disabled}
                 className={`flex items-center gap-1.5 px-4 py-2 font-mono text-[11px] uppercase tracking-widest transition-all ${activeTab === tab.id
-                    ? "text-[#6366F1] border-b-2 border-[#6366F1]"
-                    : tab.disabled
-                      ? "text-[#475569] cursor-not-allowed"
-                      : "text-[#94A3B8] hover:text-[#6366F1] border-b-2 border-transparent"
+                  ? "text-[#6366F1] border-b-2 border-[#6366F1]"
+                  : tab.disabled
+                    ? "text-[#475569] cursor-not-allowed"
+                    : "text-[#94A3B8] hover:text-[#6366F1] border-b-2 border-transparent"
                   }`}
               >
                 <Icon name={tab.icon as any} size={13} />
@@ -308,6 +322,68 @@ export default function DashboardInteractive() {
               casesRun={casesRun}
               totalCases={totalCases || totalSelectedCases || 0}
             />
+          </div>
+        )}
+
+        {activeTab === "shadow" && scanId && (
+          <div className="max-w-2xl mx-auto space-y-4">
+            <div className="terminal-window p-5">
+              <h3 className="font-mono text-xs text-[#A78BFA] uppercase tracking-widest mb-3">Shadow API Diff</h3>
+              <p className="font-mono text-[10px] text-[#475569] mb-4">Upload an OpenAPI/Swagger spec to compare against captured traffic.</p>
+              <input type="file" accept=".json,.yaml,.yml" onChange={async (e) => {
+                const file = e.target.files?.[0]; if (!file) return;
+                const fd = new FormData(); fd.append("file", file);
+                try {
+                  const data = await apiFetch<any>(`/api/scan/${scanId}/openapi`, { method: "POST", body: fd });
+                  setShadowReport(data);
+                } catch (err: any) { setError(err.message); }
+              }} className="font-mono text-xs text-[#94A3B8]" />
+              {shadowReport && (
+                <div className="mt-4 space-y-3">
+                  <div className="font-mono text-xs text-[#F8FAFC]">Coverage: <span className="text-[#6366F1]">{shadowReport.coverage_percent}%</span></div>
+                  {shadowReport.undocumented?.length > 0 && (
+                    <div>
+                      <div className="font-mono text-[10px] text-[#FF4F4F] uppercase mb-1">Undocumented (Shadow) Endpoints</div>
+                      {shadowReport.undocumented.map((e: any, i: number) => (
+                        <div key={i} className="font-mono text-xs text-[#F8FAFC] py-1">{e.method} {e.path} <span className="text-[#475569]">{e.host}</span></div>
+                      ))}
+                    </div>
+                  )}
+                  {shadowReport.unimplemented?.length > 0 && (
+                    <div>
+                      <div className="font-mono text-[10px] text-[#FFD166] uppercase mb-1">In Spec but Not in Traffic</div>
+                      {shadowReport.unimplemented.map((e: any, i: number) => (
+                        <div key={i} className="font-mono text-xs text-[#94A3B8] py-1">{e.method} {e.path}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === "patches" && scanId && (
+          <div className="max-w-3xl mx-auto space-y-4">
+            <button onClick={async () => {
+              try {
+                const data = await apiFetch<any>(`/api/scan/${scanId}/patches`);
+                setPatches(data.patches || []);
+              } catch (err: any) { setError(err.message); }
+            }} className="hacker-btn px-4 py-2 font-mono text-xs uppercase tracking-widest">
+              Generate Patches ({findings.length} findings)
+            </button>
+            {patches.map((p, i) => (
+              <div key={i} className="terminal-window p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className={`font-mono text-[10px] px-2 py-0.5 rounded uppercase tracking-wider badge-${p.severity?.toLowerCase()}`}>{p.severity}</span>
+                  <span className="font-mono text-xs text-[#F8FAFC] font-semibold">{p.title}</span>
+                  <span className="font-mono text-[10px] text-[#475569]">{p.language}</span>
+                </div>
+                <p className="font-mono text-[10px] text-[#94A3B8] mb-2">{p.description}</p>
+                <pre className="bg-[rgba(0,0,0,0.5)] border border-[rgba(99,102,241,0.1)] rounded p-3 font-mono text-[11px] text-[#E8F5E9] overflow-x-auto whitespace-pre-wrap">{p.code}</pre>
+              </div>
+            ))}
           </div>
         )}
       </div>

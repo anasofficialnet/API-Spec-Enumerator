@@ -14,9 +14,12 @@ import {
   DocumentArrowDownIcon as OutlineDocumentArrowDownIcon,
   DocumentIcon as OutlineDocumentIcon,
   DocumentTextIcon as OutlineDocumentTextIcon,
+  ExclamationCircleIcon as OutlineExclamationCircleIcon,
   ExclamationTriangleIcon as OutlineExclamationTriangleIcon,
   EyeIcon as OutlineEyeIcon,
+  EyeSlashIcon as OutlineEyeSlashIcon,
   HomeIcon as OutlineHomeIcon,
+  InformationCircleIcon as OutlineInformationCircleIcon,
   ListBulletIcon as OutlineListBulletIcon,
   LockClosedIcon as OutlineLockClosedIcon,
   LockOpenIcon as OutlineLockOpenIcon,
@@ -25,6 +28,7 @@ import {
   RocketLaunchIcon as OutlineRocketLaunchIcon,
   ShieldCheckIcon as OutlineShieldCheckIcon,
   SparklesIcon as OutlineSparklesIcon,
+  WrenchScrewdriverIcon as OutlineWrenchScrewdriverIcon,
   XMarkIcon as OutlineXMarkIcon,
 } from '@heroicons/react/24/outline';
 import {
@@ -40,9 +44,12 @@ import {
   DocumentArrowDownIcon as SolidDocumentArrowDownIcon,
   DocumentIcon as SolidDocumentIcon,
   DocumentTextIcon as SolidDocumentTextIcon,
+  ExclamationCircleIcon as SolidExclamationCircleIcon,
   ExclamationTriangleIcon as SolidExclamationTriangleIcon,
   EyeIcon as SolidEyeIcon,
+  EyeSlashIcon as SolidEyeSlashIcon,
   HomeIcon as SolidHomeIcon,
+  InformationCircleIcon as SolidInformationCircleIcon,
   ListBulletIcon as SolidListBulletIcon,
   LockClosedIcon as SolidLockClosedIcon,
   LockOpenIcon as SolidLockOpenIcon,
@@ -51,6 +58,7 @@ import {
   RocketLaunchIcon as SolidRocketLaunchIcon,
   ShieldCheckIcon as SolidShieldCheckIcon,
   SparklesIcon as SolidSparklesIcon,
+  WrenchScrewdriverIcon as SolidWrenchScrewdriverIcon,
   XMarkIcon as SolidXMarkIcon,
 } from '@heroicons/react/24/solid';
 
@@ -77,9 +85,12 @@ const outlineIcons = {
   DocumentArrowDownIcon: OutlineDocumentArrowDownIcon,
   DocumentIcon: OutlineDocumentIcon,
   DocumentTextIcon: OutlineDocumentTextIcon,
+  ExclamationCircleIcon: OutlineExclamationCircleIcon,
   ExclamationTriangleIcon: OutlineExclamationTriangleIcon,
   EyeIcon: OutlineEyeIcon,
+  EyeSlashIcon: OutlineEyeSlashIcon,
   HomeIcon: OutlineHomeIcon,
+  InformationCircleIcon: OutlineInformationCircleIcon,
   ListBulletIcon: OutlineListBulletIcon,
   LockClosedIcon: OutlineLockClosedIcon,
   LockOpenIcon: OutlineLockOpenIcon,
@@ -88,6 +99,7 @@ const outlineIcons = {
   RocketLaunchIcon: OutlineRocketLaunchIcon,
   ShieldCheckIcon: OutlineShieldCheckIcon,
   SparklesIcon: OutlineSparklesIcon,
+  WrenchScrewdriverIcon: OutlineWrenchScrewdriverIcon,
   XMarkIcon: OutlineXMarkIcon,
 } satisfies Record<string, IconComponent>;
 
@@ -104,9 +116,12 @@ const solidIcons = {
   DocumentArrowDownIcon: SolidDocumentArrowDownIcon,
   DocumentIcon: SolidDocumentIcon,
   DocumentTextIcon: SolidDocumentTextIcon,
+  ExclamationCircleIcon: SolidExclamationCircleIcon,
   ExclamationTriangleIcon: SolidExclamationTriangleIcon,
   EyeIcon: SolidEyeIcon,
+  EyeSlashIcon: SolidEyeSlashIcon,
   HomeIcon: SolidHomeIcon,
+  InformationCircleIcon: SolidInformationCircleIcon,
   ListBulletIcon: SolidListBulletIcon,
   LockClosedIcon: SolidLockClosedIcon,
   LockOpenIcon: SolidLockOpenIcon,
@@ -115,6 +130,7 @@ const solidIcons = {
   RocketLaunchIcon: SolidRocketLaunchIcon,
   ShieldCheckIcon: SolidShieldCheckIcon,
   SparklesIcon: SolidSparklesIcon,
+  WrenchScrewdriverIcon: SolidWrenchScrewdriverIcon,
   XMarkIcon: SolidXMarkIcon,
 } satisfies Record<string, IconComponent>;
 

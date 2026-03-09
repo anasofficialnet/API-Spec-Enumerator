@@ -22,6 +22,13 @@ export interface FuzzSettings {
   categories: string[];
   customHeaders?: Record<string, string>;
   customCookies?: Record<string, string>;
+  enableBola?: boolean;
+  bolaUserBToken?: string;
+  enableStateful?: boolean;
+  enableRace?: boolean;
+  burstSize?: number;
+  enableMutations?: boolean;
+  enableGraphql?: boolean;
 }
 
 const FUZZ_CATEGORIES = [
@@ -47,6 +54,13 @@ export default function FuzzConfig({ selectedCount, totalCases, onStart, isRunni
     categories: ["auth", "hidden_params", "cors", "error_leak"],
     customHeaders: {},
     customCookies: {},
+    enableBola: false,
+    bolaUserBToken: "",
+    enableStateful: false,
+    enableRace: false,
+    burstSize: 10,
+    enableMutations: false,
+    enableGraphql: false,
   });
 
   const toggleCategory = (id: string) => {
@@ -66,6 +80,13 @@ export default function FuzzConfig({ selectedCount, totalCases, onStart, isRunni
       setConfig((p) => ({ ...p, customHeaders: p.customHeaders }));
     }
   };
+
+  const projectedTotalCases = totalCases
+    + (config.enableBola ? selectedCount * 1 : 0)
+    + (config.enableStateful ? selectedCount * 4 : 0) // rough upper bound
+    + (config.enableRace ? selectedCount * (config.burstSize || 10) : 0)
+    + (config.enableMutations ? selectedCount * 7 : 0)
+    + (config.enableGraphql ? selectedCount * 5 : 0);
 
   return (
     <div className="terminal-window">
@@ -156,7 +177,7 @@ export default function FuzzConfig({ selectedCount, totalCases, onStart, isRunni
                 key={cat.id}
                 onClick={() => toggleCategory(cat.id)}
                 className={`font-mono text-[10px] px-2.5 py-1 rounded border uppercase tracking-wider transition-all ${config.categories.includes(cat.id)
-                    ? "border-current opacity-100" : "opacity-30 border-[rgba(99, 102, 241,0.1)]"
+                  ? "border-current opacity-100" : "opacity-30 border-[rgba(99, 102, 241,0.1)]"
                   }`}
                 style={config.categories.includes(cat.id) ? { color: cat.color, borderColor: cat.color, background: `${cat.color}15` } : { color: "#94A3B8" }}
               >
@@ -207,11 +228,110 @@ export default function FuzzConfig({ selectedCount, totalCases, onStart, isRunni
           </button>
         </div>
 
+        {/* ── Power Features ── */}
+        <div className="border-t border-[rgba(99, 102, 241,0.15)] pt-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Icon name="BoltIcon" size={14} className="text-[#A78BFA]" />
+            <span className="font-mono text-[10px] text-[#A78BFA] uppercase tracking-widest font-bold">Power Features</span>
+          </div>
+
+          {/* BOLA/IDOR Toggle */}
+          <div className="flex items-center justify-between py-2">
+            <div>
+              <p className="font-mono text-xs text-[#F8FAFC]">🧠 BOLA/IDOR Detection</p>
+              <p className="font-mono text-[10px] text-[#475569]">Cross-user resource access testing</p>
+            </div>
+            <button
+              onClick={() => setConfig((p) => ({ ...p, enableBola: !p.enableBola }))}
+              className={`w-10 h-5 rounded-full transition-all duration-300 relative ${config.enableBola ? "bg-[#A78BFA]" : "bg-[rgba(99,102,241,0.15)]"}`}
+            >
+              <span className="absolute top-0.5 w-4 h-4 rounded-full transition-all duration-300 bg-[#030509]" style={{ left: config.enableBola ? "22px" : "2px" }} />
+            </button>
+          </div>
+          {config.enableBola && (
+            <div className="ml-4 mb-2">
+              <label className="font-mono text-[10px] text-[#94A3B8] uppercase tracking-widest block mb-1">User B Token (attacker)</label>
+              <input type="password" value={config.bolaUserBToken} onChange={(e) => setConfig((p) => ({ ...p, bolaUserBToken: e.target.value }))}
+                className="w-full bg-[rgba(0,0,0,0.4)] border border-[rgba(167,139,250,0.2)] rounded px-3 py-1.5 font-mono text-xs text-[#F8FAFC] focus:outline-none focus:border-[rgba(167,139,250,0.5)] transition-colors"
+                placeholder="Bearer token for User B" />
+              <p className="font-mono text-[10px] text-[#475569] mt-0.5">User A = your main auth above</p>
+            </div>
+          )}
+
+          {/* Stateful Toggle */}
+          <div className="flex items-center justify-between py-2">
+            <div>
+              <p className="font-mono text-xs text-[#F8FAFC]">🔗 Stateful Fuzzing</p>
+              <p className="font-mono text-[10px] text-[#475569]">Skip-step & replay logic attacks</p>
+            </div>
+            <button
+              onClick={() => setConfig((p) => ({ ...p, enableStateful: !p.enableStateful }))}
+              className={`w-10 h-5 rounded-full transition-all duration-300 relative ${config.enableStateful ? "bg-[#A78BFA]" : "bg-[rgba(99,102,241,0.15)]"}`}
+            >
+              <span className="absolute top-0.5 w-4 h-4 rounded-full transition-all duration-300 bg-[#030509]" style={{ left: config.enableStateful ? "22px" : "2px" }} />
+            </button>
+          </div>
+
+          {/* Race Condition Toggle */}
+          <div className="flex items-center justify-between py-2">
+            <div>
+              <p className="font-mono text-xs text-[#F8FAFC]">🏎️ Race Condition</p>
+              <p className="font-mono text-[10px] text-[#475569]">Concurrent burst testing</p>
+            </div>
+            <button
+              onClick={() => setConfig((p) => ({ ...p, enableRace: !p.enableRace }))}
+              className={`w-10 h-5 rounded-full transition-all duration-300 relative ${config.enableRace ? "bg-[#A78BFA]" : "bg-[rgba(99,102,241,0.15)]"}`}
+            >
+              <span className="absolute top-0.5 w-4 h-4 rounded-full transition-all duration-300 bg-[#030509]" style={{ left: config.enableRace ? "22px" : "2px" }} />
+            </button>
+          </div>
+          {config.enableRace && (
+            <div className="ml-4 mb-2">
+              <label className="font-mono text-[10px] text-[#94A3B8] uppercase tracking-widest block mb-1">Burst Size</label>
+              <input type="number" min={2} max={50} value={config.burstSize} onChange={(e) => setConfig((p) => ({ ...p, burstSize: parseInt(e.target.value) || 10 }))}
+                className="w-20 bg-[rgba(0,0,0,0.4)] border border-[rgba(167,139,250,0.2)] rounded px-3 py-1.5 font-mono text-xs text-[#F8FAFC] focus:outline-none focus:border-[rgba(167,139,250,0.5)] transition-colors" />
+            </div>
+          )}
+
+          {/* AST Mutations Toggle */}
+          <div className="flex items-center justify-between py-2">
+            <div>
+              <p className="font-mono text-xs text-[#F8FAFC]">🧬 JSON Mutations</p>
+              <p className="font-mono text-[10px] text-[#475569]">Type-swap, nesting, mass-assign</p>
+            </div>
+            <button
+              onClick={() => setConfig((p) => ({ ...p, enableMutations: !p.enableMutations }))}
+              className={`w-10 h-5 rounded-full transition-all duration-300 relative ${config.enableMutations ? "bg-[#A78BFA]" : "bg-[rgba(99,102,241,0.15)]"}`}
+            >
+              <span className="absolute top-0.5 w-4 h-4 rounded-full transition-all duration-300 bg-[#030509]" style={{ left: config.enableMutations ? "22px" : "2px" }} />
+            </button>
+          </div>
+
+          {/* GraphQL/WS Toggle */}
+          <div className="flex items-center justify-between py-2">
+            <div>
+              <p className="font-mono text-xs text-[#F8FAFC]">🕸️ GraphQL & WebSocket</p>
+              <p className="font-mono text-[10px] text-[#475569]">Introspection, depth DoS, CSWSH</p>
+            </div>
+            <button
+              onClick={() => setConfig((p) => ({ ...p, enableGraphql: !p.enableGraphql }))}
+              className={`w-10 h-5 rounded-full transition-all duration-300 relative ${config.enableGraphql ? "bg-[#A78BFA]" : "bg-[rgba(99,102,241,0.15)]"}`}
+            >
+              <span className="absolute top-0.5 w-4 h-4 rounded-full transition-all duration-300 bg-[#030509]" style={{ left: config.enableGraphql ? "22px" : "2px" }} />
+            </button>
+          </div>
+        </div>
+
         {/* Summary + Launch */}
         <div className="bg-[rgba(0,0,0,0.4)] rounded p-4 border border-[rgba(99, 102, 241,0.06)] font-mono text-xs space-y-1">
           <div className="text-[#94A3B8]">// campaign summary</div>
           <div><span className="text-[#4FC3F7]">endpoints</span><span className="text-[#94A3B8]">: </span><span className="text-[#6366F1]">{selectedCount}</span></div>
-          <div><span className="text-[#4FC3F7]">fuzz_cases</span><span className="text-[#94A3B8]">: </span><span className="text-[#6366F1]">{totalCases}</span></div>
+          <div>
+            <span className="text-[#4FC3F7]">fuzz_cases</span><span className="text-[#94A3B8]">: </span>
+            <span className="text-[#6366F1]">
+              {projectedTotalCases > totalCases ? `~${projectedTotalCases.toLocaleString()}` : totalCases.toLocaleString()}
+            </span>
+          </div>
           <div><span className="text-[#4FC3F7]">mode</span><span className="text-[#94A3B8]">: </span><span className="text-[#6366F1]">{config.dryRun ? "dry_run" : "live"}</span></div>
         </div>
 
@@ -219,8 +339,8 @@ export default function FuzzConfig({ selectedCount, totalCases, onStart, isRunni
           onClick={() => onStart(config)}
           disabled={selectedCount === 0 || isRunning}
           className={`w-full py-3 font-mono text-sm font-bold uppercase tracking-widest rounded transition-all duration-300 flex items-center justify-center gap-2 ${selectedCount === 0 || isRunning
-              ? "bg-[rgba(99, 102, 241,0.05)] text-[#475569] cursor-not-allowed border border-[rgba(99, 102, 241,0.08)]"
-              : "hacker-btn w-full"
+            ? "bg-[rgba(99, 102, 241,0.05)] text-[#475569] cursor-not-allowed border border-[rgba(99, 102, 241,0.08)]"
+            : "hacker-btn w-full"
             }`}
         >
           {isRunning ? (

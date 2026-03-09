@@ -18,6 +18,52 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
+# Power Modules — support both `backend.modules.*` (from project root) and `modules.*` (from backend/)
+try:
+    from backend.modules.bola_detector import (
+        extract_resource_ids, build_bola_cases, analyze_bola_response,
+    )
+    from backend.modules.stateful_fuzzer import (
+        discover_chains, build_stateful_cases, analyze_stateful_response,
+    )
+    from backend.modules.race_engine import (
+        identify_race_targets, build_race_burst, execute_race_burst, analyze_race_results,
+    )
+    from backend.modules.ast_mutator import (
+        build_mutation_cases, analyze_mutation_response,
+    )
+    from backend.modules.shadow_api import (
+        parse_openapi_spec, diff_traffic_vs_spec,
+    )
+    from backend.modules.patch_generator import generate_patches
+    from backend.modules.graphql_ws import (
+        detect_graphql_endpoints, build_graphql_fuzz_cases, analyze_graphql_response,
+        detect_ws_endpoints, build_ws_fuzz_cases, analyze_ws_response,
+        parse_introspection_result,
+    )
+except ImportError:
+    from modules.bola_detector import (
+        extract_resource_ids, build_bola_cases, analyze_bola_response,
+    )
+    from modules.stateful_fuzzer import (
+        discover_chains, build_stateful_cases, analyze_stateful_response,
+    )
+    from modules.race_engine import (
+        identify_race_targets, build_race_burst, execute_race_burst, analyze_race_results,
+    )
+    from modules.ast_mutator import (
+        build_mutation_cases, analyze_mutation_response,
+    )
+    from modules.shadow_api import (
+        parse_openapi_spec, diff_traffic_vs_spec,
+    )
+    from modules.patch_generator import generate_patches
+    from modules.graphql_ws import (
+        detect_graphql_endpoints, build_graphql_fuzz_cases, analyze_graphql_response,
+        detect_ws_endpoints, build_ws_fuzz_cases, analyze_ws_response,
+        parse_introspection_result,
+    )
+
 # -----------------------------
 # Models
 # -----------------------------
@@ -26,6 +72,10 @@ class AuthConfig(BaseModel):
     bearer: Optional[str] = None
     headers: Dict[str, str] = Field(default_factory=dict)
     cookies: Dict[str, str] = Field(default_factory=dict)
+
+class BolaConfig(BaseModel):
+    user_a_auth: Optional[AuthConfig] = None
+    user_b_auth: Optional[AuthConfig] = None
 
 class RunConfig(BaseModel):
     allowlist: List[str] = Field(default_factory=list)
@@ -39,6 +89,14 @@ class RunConfig(BaseModel):
     custom_cookies: Dict[str, str] = Field(default_factory=dict)
     dry_run: bool = False
     categories: List[str] = Field(default_factory=list)
+    # Power feature flags
+    enable_bola: bool = False
+    bola_config: Optional[BolaConfig] = None
+    enable_stateful: bool = False
+    enable_race: bool = False
+    burst_size: int = 10
+    enable_mutations: bool = False
+    enable_graphql: bool = False
 
 class IngestResponse(BaseModel):
     scan_id: str
@@ -104,6 +162,10 @@ class ScanState:
     last_updated: float = field(default_factory=time.time)
     dry_run_log: List[Dict[str, Any]] = field(default_factory=list)
     started_at: str = field(default_factory=lambda: time.strftime("%Y-%m-%d %H:%M:%S"))
+    # Power feature state
+    shadow_report: Optional[Dict[str, Any]] = None
+    openapi_spec: Optional[bytes] = None
+    openapi_fmt: str = "json"
 
 SCANS: Dict[str, ScanState] = {}
 ROBOTS_CACHE: Dict[str, List[str]] = {}
@@ -1066,6 +1128,63 @@ async def export_html(scan_id: str):
 
 
 # -----------------------------
+# Power Feature Routes
+# -----------------------------
+
+@app.post("/api/scan/{scan_id}/openapi")
+async def upload_openapi(scan_id: str, file: UploadFile = File(...)):
+    """Upload an OpenAPI/Swagger spec for Shadow API analysis."""
+    state = SCANS.get(scan_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+    content = await file.read()
+    fname = file.filename or "spec"
+    fmt = "yaml" if fname.endswith((".yaml", ".yml")) else "json"
+
+    try:
+        spec_endpoints = parse_openapi_spec(content, fmt)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    report = diff_traffic_vs_spec(state.endpoints, spec_endpoints)
+
+    state.shadow_report = {
+        "undocumented": report.undocumented,
+        "unimplemented": report.unimplemented,
+        "param_mismatches": report.param_mismatches,
+        "total_spec_endpoints": report.total_spec_endpoints,
+        "total_traffic_endpoints": report.total_traffic_endpoints,
+        "coverage_percent": report.coverage_percent,
+    }
+    state.openapi_spec = content
+    state.openapi_fmt = fmt
+
+    return state.shadow_report
+
+
+@app.get("/api/scan/{scan_id}/patches")
+async def get_patches(scan_id: str):
+    """Generate auto-remediation patches for all findings."""
+    state = SCANS.get(scan_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    patches = generate_patches(state.report_findings)
+    return {"patches": patches, "total": len(patches)}
+
+
+@app.get("/api/scan/{scan_id}/shadow-report")
+async def get_shadow_report(scan_id: str):
+    """Get the Shadow API diff report."""
+    state = SCANS.get(scan_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    if not state.shadow_report:
+        return {"message": "No OpenAPI spec uploaded yet", "undocumented": [], "unimplemented": [], "param_mismatches": []}
+    return state.shadow_report
+
+
+# -----------------------------
 # Scan engine
 # -----------------------------
 
@@ -1074,7 +1193,11 @@ async def _execute_scan(state: ScanState, selected: set[str], config: RunConfig)
     if not endpoint_map:
         return
 
-    # Build cases once
+    auth_dict = None
+    if config.auth:
+        auth_dict = {"bearer": config.auth.bearer, "headers": dict(config.auth.headers), "cookies": dict(config.auth.cookies)}
+
+    # Build standard cases
     case_queue: List[Tuple[EndpointInfo, Dict[str, Any]]] = []
     for endpoint in endpoint_map.values():
         rec = _pick_record(state.records, endpoint)
@@ -1084,53 +1207,115 @@ async def _execute_scan(state: ScanState, selected: set[str], config: RunConfig)
         for c in cases:
             case_queue.append((endpoint, c))
 
+        # Power Feature: AST Mutations
+        if config.enable_mutations and rec.body:
+            mut_cases = build_mutation_cases(rec, endpoint, auth_dict, config.target_base_url)
+            for c in mut_cases:
+                case_queue.append((endpoint, c))
+
+    # Power Feature: BOLA/IDOR Detection
+    if config.enable_bola and config.bola_config:
+        ua = config.bola_config.user_a_auth
+        ub = config.bola_config.user_b_auth
+        if ua and ub:
+            ua_dict = {"bearer": ua.bearer, "headers": dict(ua.headers), "cookies": dict(ua.cookies)}
+            ub_dict = {"bearer": ub.bearer, "headers": dict(ub.headers), "cookies": dict(ub.cookies)}
+            bola_cases = build_bola_cases(state.records, state.endpoints, ua_dict, ub_dict, config.target_base_url)
+            for c in bola_cases:
+                ep = state.endpoints.get(c.get("ep_key"))
+                if ep:
+                    case_queue.append((ep, c))
+
+    # Power Feature: Stateful Sequential Fuzzing
+    if config.enable_stateful:
+        chains = discover_chains(state.records, state.endpoints)
+        for chain in chains:
+            st_cases = build_stateful_cases(chain, auth_dict, config.target_base_url)
+            for c in st_cases:
+                ep = state.endpoints.get(c.get("ep_key"))
+                if ep:
+                    case_queue.append((ep, c))
+
+    # Power Feature: Race Condition
+    if config.enable_race:
+        race_targets = identify_race_targets(state.endpoints)
+        for eid in race_targets:
+            if eid not in endpoint_map:
+                continue
+            ep = endpoint_map[eid]
+            rec = _pick_record(state.records, ep)
+            if rec:
+                burst = build_race_burst(rec, ep, auth_dict, config.target_base_url, config.burst_size)
+                for c in burst:
+                    case_queue.append((ep, c))
+
+    # Power Feature: GraphQL
+    if config.enable_graphql:
+        gql_eps = detect_graphql_endpoints(state.records, state.endpoints)
+        for gql_ep in gql_eps:
+            gql_cases = build_graphql_fuzz_cases(gql_ep, None, auth_dict, config.target_base_url)
+            ep = state.endpoints.get(gql_ep.endpoint_id)
+            if not ep:
+                continue
+            for c in gql_cases:
+                case_queue.append((ep, c))
+
+        ws_eps = detect_ws_endpoints(state.records, state.endpoints)
+        for ws_ep in ws_eps:
+            ws_cases = build_ws_fuzz_cases(ws_ep, auth_dict, config.target_base_url)
+            ep = state.endpoints.get(ws_ep.endpoint_id)
+            if not ep:
+                continue
+            for c in ws_cases:
+                case_queue.append((ep, c))
+
     state.total_cases = len(case_queue)
 
     limiter = asyncio.Semaphore(max(1, config.concurrency))
 
     async with httpx.AsyncClient(follow_redirects=True, timeout=10.0) as client:
-        for endpoint, case in case_queue:
-            await limiter.acquire()
-            try:
-                if config.dry_run:
-                    await asyncio.sleep(1.0 / max(0.1, config.rate_limit))
-                    # Log the dry-run case so UI can track it
-                    state.dry_run_log.append({
-                        "id": case.get("id", "unknown"),
-                        "method": case.get("method"),
-                        "url": case.get("url"),
-                        "ep_key": case.get("ep_key"),
-                        "skipped": True,
-                    })
-                    state.cases_run += 1
-                    limiter.release()
-                    continue
-
-                parsed = urlparse(case["url"])
-                if config.respect_robots:
-                    disallow = _build_robots_allowlist(parsed.netloc)
-                    if _is_disallowed(parsed.path or "/", disallow):
+        async def _worker(endpoint, case):
+            async with limiter:
+                try:
+                    if config.dry_run:
+                        await asyncio.sleep(config.concurrency / max(0.1, config.rate_limit))
+                        state.dry_run_log.append({
+                            "id": case.get("id", "unknown"),
+                            "method": case.get("method"),
+                            "url": case.get("url"),
+                            "ep_key": case.get("ep_key"),
+                            "skipped": True,
+                        })
                         state.cases_run += 1
-                        limiter.release()
-                        continue
+                        return
 
-                if not _host_in_allowlist(parsed.netloc, config.allowlist):
+                    parsed = urlparse(case["url"])
+                    if config.respect_robots:
+                        disallow = _build_robots_allowlist(parsed.netloc)
+                        if _is_disallowed(parsed.path or "/", disallow):
+                            state.cases_run += 1
+                            return
+
+                    if not _host_in_allowlist(parsed.netloc, config.allowlist):
+                        state.cases_run += 1
+                        return
+
+                    resp = await client.request(
+                        case["method"],
+                        case["url"],
+                        headers=case["headers"],
+                        content=case.get("body"),
+                    )
+
+                    await _analyze_case(state, endpoint, case, resp)
                     state.cases_run += 1
-                    limiter.release()
-                    continue
+                    await asyncio.sleep(config.concurrency / max(0.1, config.rate_limit))
+                except Exception:
+                    state.cases_run += 1
 
-                resp = await client.request(
-                    case["method"],
-                    case["url"],
-                    headers=case["headers"],
-                    content=case.get("body"),
-                )
-
-                await _analyze_case(state, endpoint, case, resp)
-                state.cases_run += 1
-                await asyncio.sleep(1.0 / max(0.1, config.rate_limit))
-            finally:
-                limiter.release()
+        tasks = [_worker(ep, c) for ep, c in case_queue]
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
 
 def _pick_record(records: List[RequestRecord], endpoint: EndpointInfo) -> Optional[RequestRecord]:
@@ -1232,12 +1417,12 @@ def _build_cases(rec: RequestRecord, endpoint: EndpointInfo, config: RunConfig) 
             "ep_key": endpoint.id,
         })
 
-    # Hidden parameter fuzzing with payloads (gated by aggressive)
-    if "hidden_params" in categories and (config.aggressive or "sqli" in categories or "xss" in categories or "ssti" in categories):
+    # Query parameter fuzzing with payloads (gated by aggressive or specific categories)
+    if config.aggressive or "sqli" in categories or "xss" in categories or "ssti" in categories:
         cases.extend(_build_hidden_param_fuzz_cases(rec, endpoint, config))
 
     # Body parameter fuzzing (JSON / form)
-    if "hidden_params" in categories and (config.aggressive or "sqli" in categories or "xss" in categories or "ssti" in categories):
+    if config.aggressive or "sqli" in categories or "xss" in categories or "ssti" in categories:
         cases.extend(_build_body_param_fuzz_cases(rec, endpoint, config))
 
     return cases
@@ -1433,6 +1618,75 @@ async def _analyze_case(state: ScanState, endpoint: EndpointInfo, case: Dict[str
                 _format_response(resp.status_code, dict(resp.headers), body),
                 "Check for reflected input and ensure proper encoding/sanitization.",
                 "CWE-79" if category == "xss" else "CWE-89" if category == "sqli" else "CWE-1336",
+            )
+
+    # ------ Power Module Analysis ------
+
+    # BOLA/IDOR Detection
+    if case_id == "bola_probe":
+        baseline = state.baselines.get(ep_key)
+        baseline_body = baseline.get("text", "").encode() if baseline else None
+        result = analyze_bola_response(baseline_body, body, resp.status_code)
+        if result:
+            _add_finding(
+                state, result["severity"], result["type"], endpoint,
+                result["evidence"],
+                _format_request(case["method"], case["url"], case["headers"], case.get("body")),
+                _format_response(resp.status_code, dict(resp.headers), body),
+                result["recommendation"], result["cwe"],
+            )
+
+    # Stateful fuzzing
+    if case_id.startswith("stateful_"):
+        result = analyze_stateful_response(case, resp.status_code, body)
+        if result:
+            _add_finding(
+                state, result["severity"], result["type"], endpoint,
+                result["evidence"],
+                _format_request(case["method"], case["url"], case["headers"], case.get("body")),
+                _format_response(resp.status_code, dict(resp.headers), body),
+                result["recommendation"], result["cwe"],
+            )
+
+    # AST Mutations
+    if case_id.startswith("mutation_"):
+        baseline = state.baselines.get(ep_key)
+        result = analyze_mutation_response(
+            case, resp.status_code, body,
+            baseline.get("status") if baseline else None,
+            baseline.get("len") if baseline else None,
+        )
+        if result:
+            _add_finding(
+                state, result["severity"], result["type"], endpoint,
+                result["evidence"],
+                _format_request(case["method"], case["url"], case["headers"], case.get("body")),
+                _format_response(resp.status_code, dict(resp.headers), body),
+                result["recommendation"], result["cwe"],
+            )
+
+    # GraphQL
+    if case_id.startswith("graphql_"):
+        result = analyze_graphql_response(case, resp.status_code, body)
+        if result:
+            _add_finding(
+                state, result["severity"], result["type"], endpoint,
+                result["evidence"],
+                _format_request(case["method"], case["url"], case["headers"], case.get("body")),
+                _format_response(resp.status_code, dict(resp.headers), body),
+                result["recommendation"], result["cwe"],
+            )
+
+    # WebSocket
+    if case_id.startswith("ws_"):
+        result = analyze_ws_response(case, resp.status_code, body)
+        if result:
+            _add_finding(
+                state, result["severity"], result["type"], endpoint,
+                result["evidence"],
+                _format_request(case["method"], case["url"], case["headers"], case.get("body")),
+                _format_response(resp.status_code, dict(resp.headers), body),
+                result["recommendation"], result["cwe"],
             )
 
 # -----------------------------
