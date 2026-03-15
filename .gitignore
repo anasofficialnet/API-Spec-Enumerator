@@ -53,3 +53,9 @@ jest-test-results.json
 
 # Optional: if using TurboRepo or monorepo
 turbo/node_modules/
+
+# Local artifacts and generated sample outputs
+artifacts/
+e2e_report.html
+reqres.har
+reqres_spec.yaml

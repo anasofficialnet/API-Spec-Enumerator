@@ -1,4 +1,5 @@
 """AASE end-to-end verification against the local safe mock target."""
+from pathlib import Path
 import httpx
 import json
 import time
@@ -6,6 +7,8 @@ import sys
 
 API = "http://127.0.0.1:8010"
 TARGET = "http://127.0.0.1:8055"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+FIXTURE_DIR = REPO_ROOT / "examples" / "e2e"
 
 def main():
     # -------------------------------------------------------
@@ -30,7 +33,7 @@ def main():
     # TEST 2: HAR File Upload
     # -------------------------------------------------------
     print("=== TEST 2: HAR File Upload ===")
-    har_path = r"c:\Users\Thinkpad\Desktop\API-Spec-Enumerator\example_traffic.har"
+    har_path = FIXTURE_DIR / "example_traffic.har"
     with open(har_path, "rb") as f:
         r2 = httpx.post(f"{API}/api/ingest", files={"file": ("example_traffic.har", f, "application/json")}, timeout=15.0)
     print(f"Status: {r2.status_code}")
@@ -111,7 +114,7 @@ def main():
     # TEST 7: OpenAPI Shadow API Diff
     # -------------------------------------------------------
     print("=== TEST 7: OpenAPI Shadow Diff ===")
-    spec_path = r"c:\Users\Thinkpad\Desktop\API-Spec-Enumerator\example_spec.yaml"
+    spec_path = FIXTURE_DIR / "example_spec.yaml"
     with open(spec_path, "rb") as f:
         r7 = httpx.post(f"{API}/api/scan/{har_id}/openapi", files={"file": ("example_spec.yaml", f, "application/x-yaml")}, timeout=10.0)
     print(f"Shadow API Status: {r7.status_code}")
