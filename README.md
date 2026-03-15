@@ -16,13 +16,13 @@
 
 ## ✨ What is AASE?
 
-**AASE (Adaptive API Spec Enumerator)** is a fast, offline-capable security tool designed to analyze API traffic and automatically discover attack surfaces. 
+**AASE (Adaptive API Spec Enumerator)** is a local-first API security tool designed to analyze captured traffic, normalize API inventory, generate targeted fuzzing cases, and execute those cases against an allowlisted target.
 
-It takes captured HTTP traffic (from browsers, Burp Suite, or mitmproxy) as input, groups requests into normalized API endpoints, automatically crafts fuzzing test cases, and runs them against the target.
+It takes captured HTTP traffic from browsers, Burp Suite, or mitmproxy, groups requests into normalized API endpoints, derives scan cases from real request structure, and runs live checks through a FastAPI backend.
 
-The project consists of two powerful components:
-1. **The Frontend**: A blazingly fast `Next.js` and `React 19` interface.
-2. **The Backend**: A `FastAPI` server for rapid parsing, payload generation, and execution.
+The project consists of two main components:
+1. **The Frontend**: A fast `Next.js` and `React 19` interface for ingestion, endpoint review, configuration, findings, and reports.
+2. **The Backend**: A `FastAPI` service for parsing, recon, case generation, execution, and reporting.
 
 ---
 
@@ -36,26 +36,85 @@ Upload your captured API traffic with drag-and-drop ease. Supported formats:
 - **JSON Lines (`.jsonl`, `.ndjson`)**: One request record per line.
 - **Raw HTTP Paste**: Paste raw HTTP requests straight into the dashboard.
 
-### 🧠 Smart Endpoint Discovery
-AASE intelligently parses hundreds of requests and normalizes dynamic segments. 
+### 🧠 Smart Endpoint Discovery & Normalization
+AASE parses hundreds of requests and normalizes dynamic segments into stable endpoint shapes.
+
 For example:
 - `GET /api/users/1` and `GET /api/users/42` automatically become `GET /api/users/{id}`.
-It automatically calculates exactly how many potential fuzzing vectors are present on every discovered endpoint.
+
+The dashboard shows backend-derived case counts for each endpoint, and preview mode refreshes those counts from the live scan plan for the current configuration.
+
+### 🏷️ Source-Aware Endpoint Inventory
+Each endpoint now carries source metadata so you can see where it came from and how trustworthy it is.
+
+Current source labels:
+- **Captured Traffic**
+- **API Documentation**
+- **Frontend Discovery**
+- **Response Discovery**
+- **Recon Guess**
+
+When multiple observed paths normalize into one endpoint shape, AASE preserves all known sources and promotes the highest-trust source as the main label shown in the inventory.
+
+### 🕸️ Deep Auto-Recon
+AASE can build scan state directly from a target URL through the backend recon engine.
+
+Current recon combines:
+- seeded API and documentation probes
+- HTML link extraction
+- JavaScript route extraction
+- frontend bundle discovery
+- source-map discovery via `sourceMappingURL`
+- source-map parsing from `sources` and `sourcesContent`
+- JSON response path extraction
+- OpenAPI and Swagger parsing
+
+Recon guesses are tracked separately from confirmed or derived endpoints, so the UI makes the difference visible instead of mixing them together.
 
 ### 🛡️ Safe & Aggressive Probe Generation
-- **Safe Mode**: Checks for basic baseline responses, missing CORS headers, hidden parameters, and simple authentication bypasses.
-- **Aggressive Mode**: Intelligently mutates body payloads and query strings looking for edge-case vulnerabilities like **SQLi, XSS, and SSTI**.
-- **Dry Run**: Validate your targets, parsed parameters, and generated test queries without sending a single byte of real traffic.
+- **Safe Mode**: Checks for baseline responses, missing CORS protections, hidden parameters, and simple authentication bypasses.
+- **Aggressive Mode**: Mutates body payloads and query strings looking for edge-case vulnerabilities like **SQLi, XSS, and SSTI**.
+- **Dry Run**: Validates targets, parsed parameters, and generated test queries without sending real traffic.
+
+### ⚡ Live Scan Controls
+AASE includes several operator-friendly controls for real scan execution:
+- **Exact Preview Counts**: Build the real scan plan before launch.
+- **Retries + Backoff**: Retry timeouts, rate limits, and transient server errors.
+- **Cancellation**: Stop long-running scans without restarting the app.
+- **SSE Progress Streaming**: Watch live scan progress and findings in real time.
+- **Target Allowlisting**: Restrict execution to an approved target host.
+
+### 🧪 Power Modules
+AASE currently includes focused security modules for:
+- **BOLA / IDOR Detection**
+- **Stateful Fuzzing**
+- **Race Condition Testing**
+- **JSON Mutations**
+- **GraphQL Probing**
+- **WebSocket Upgrade Checks**
+- **Attack Graph Generation**
+- **Auto Login and Session Reuse**
+- **Shadow API Diffing**
+- **OAST Callback Tracking**
 
 ### 📊 Operator-Friendly Reporting & Exporting
-Get real-time feedback during live scans via Server-Sent Events (SSE). Once a scan completes, you can review everything in the **Findings** tab. From there, you have two powerful export options:
-- **Export JSON**: Downloads a complete, machine-readable `aase_report_xyz.json` file containing all discovered vectors, request/response pairs, and metadata. Perfect for piping into other CLI tools or custom scripts.
-- **Export HTML**: Generates a beautiful, single-file, standalone HTML executive report. It color-codes findings by severity (Critical to Info), includes embedded CVSS/CWE data, and provides remediation advice. You can immediately email this to developers.
+Get real-time feedback during live scans via Server-Sent Events (SSE). Once a scan completes, you can review everything in the **Findings** tab and export the results:
+- **Export JSON**: Downloads a machine-readable report with findings, request and response evidence, and metadata.
+- **Export HTML**: Generates a standalone executive report with severity, CVSS, CWE, remediation guidance, and replay detail.
+
+The reporting pipeline now includes developer-grade output such as:
+- replay-ready request URLs
+- `curl` reproduction commands
+- request and response summaries
+- verification steps
+- developer notes alongside remediation guidance
 
 ### ⚙️ Advanced Fuzzing Configuration
-For advanced operators, AASE supports a highly tunable fuzzing engine via its backend configuration architecture:
-- **Payload Dictionaries**: The engine utilizes custom SQLi, XSS, and SSTI payloads during Aggressive Mode.
-- **Target Overrides**: Seamlessly rewrite the base URL (e.g., from `localhost` to `staging.api.com`) during test execution without altering your ingested capture files.
+For advanced operators, AASE supports a tunable fuzzing engine via its backend configuration architecture:
+- **Payload Dictionaries**: SQLi, XSS, and SSTI payload families during Aggressive Mode.
+- **Target Overrides**: Rewrite the base URL during test execution without altering ingested capture files.
+- **Presets**: Safe, Standard, and Aggressive presets for faster campaign setup.
+- **Validation Guards**: Warn or block risky features when required inputs are missing.
 
 ---
 
@@ -63,13 +122,21 @@ For advanced operators, AASE supports a highly tunable fuzzing engine via its ba
 
 > [!IMPORTANT]
 > **Cloud Deployment (Free Tier Sleep Warning)**
-> The live deployment of this application runs its frontend on Vercel and its backend on Render's free tier. 
-> Render's free servers **automatically spin down and go to sleep** after 15 minutes of inactivity. 
-> 
-> If you visit the site and try to upload a file for the first time in a while, it may take **45 to 60 seconds** for the backend to wake up. Please be patient on the first upload! Every subsequent request will be lightning fast.
+> The live deployment of this application runs its frontend on Vercel and its backend on Render's free tier.
+> Render free instances automatically spin down after inactivity.
+>
+> If you visit the site and try to upload a file for the first time in a while, it may take **45 to 60 seconds** for the backend to wake up.
 
 - **Frontend Environment**: Next.js 15, hosted on Vercel Edge.
-- **Backend API**: Python FastAPI, hosted as a Python 3 Web Service on Render.
+- **Backend API**: Python FastAPI, hosted as a Python 3 web service on Render.
+
+The current local architecture is split into these layers:
+- **Ingestion Layer**: HAR, Burp XML, mitmproxy JSON, JSONL, and raw HTTP parsing
+- **Discovery Layer**: endpoint normalization, source labeling, recon, and spec parsing
+- **Planning Layer**: case generation, preview counts, and endpoint selection
+- **Execution Layer**: async HTTP execution, retries, cancellation, and streaming status
+- **Analysis Layer**: finding detection, attack graph generation, shadow API diffing, and patch suggestion generation
+- **Reporting Layer**: JSON export, HTML executive reports, replay commands, and remediation notes
 
 ---
 
@@ -103,21 +170,29 @@ You need the following installed:
 
 ### Running the App Locally
 
-To start the local command center, you can run a single command that orchestrates both frontend and backend:
+To start the local command center, run:
 
 ```bash
 npm run dev
 ```
 
-*(This uses `concurrently` to bring up the FastAPI backend on port 8010, and Next.js on port 4028.)*
+This uses `concurrently` to bring up:
+- FastAPI backend on port `8010`
+- Next.js frontend on port `4028`
 
 Open your browser to: **[http://localhost:4028](http://localhost:4028)**
+
+If you want to point the frontend at a specific backend origin, use:
+
+```bash
+NEXT_PUBLIC_API_BASE=http://127.0.0.1:8010
+```
 
 ---
 
 ## 🧪 Testing an Example
 
-Want to see it in action without a target? We got you.
+Want to see it in action without touching a live target?
 
 1. Once the app is running, navigate to the Dashboard.
 2. Drag and drop the provided example file located at `examples/sample.har`.
@@ -126,16 +201,51 @@ Want to see it in action without a target? We got you.
    - `GET /api/users/{id}`
    - `POST /api/users`
    - `POST /api/auth/login`
-4. Set **Dry Run Mode** to `On` and hit "Start New Scan".
-5. Watch the 3D dashboard adapt while generating the security probe cases!
+4. Set **Dry Run Mode** to `On` and hit **Start New Scan**.
+5. Review the generated endpoint inventory and scan plan in the dashboard.
+
+### Safe Local Verification
+
+AASE also includes a safe mock target and a full local verification flow.
+
+1. Start the mock API target:
+   ```bash
+   python -m uvicorn backend.mock_target:app --host 127.0.0.1 --port 8055
+   ```
+2. Start AASE:
+   ```bash
+   npm run dev
+   ```
+3. Run the safe end-to-end verification:
+   ```bash
+   python backend/e2e_safe_test.py
+   ```
+
+This flow exercises:
+- auto-recon
+- attack graph generation
+- exact preview counts
+- live scan execution
+- OAST event recording
+- HTML report export
+- scan cancellation
+
+Reusable sample fixtures live under:
+- `examples/`
+- `examples/e2e/`
+
+Generated local E2E outputs are written under:
+- `artifacts/e2e/`
 
 ---
 
 ## 🔒 Security & Safety Notes
 
-- **Never fuzz applications without authorization!** This tool is strictly intended for local development, research, and authorized penetration testing on systems you explicitly control!
-- AASE strictly respects standard `robots.txt` paths by default during live scans to prevent unexpected crawling.
-- No remote telemetry or analytics exist in AASE. All scan logic, parameters, and results reside locally within memory. Backend state drops completely upon restarting the process.
+- **Never fuzz applications without authorization.** This tool is intended for local development, research, and authorized penetration testing on systems you explicitly control.
+- AASE respects standard `robots.txt` paths by default during live scans.
+- No remote telemetry or analytics are built into AASE. Scan logic, parameters, and results stay local to the running process.
+- Prefer **Preview** or **Dry Run** first when validating a new target or a new scan profile.
+- Keep aggressive payloads, race testing, and live OAST callbacks for controlled or explicitly approved environments.
 
 ---
 
