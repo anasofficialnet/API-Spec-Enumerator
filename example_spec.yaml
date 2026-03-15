@@ -1,0 +1,49 @@
+openapi: 3.0.0
+info:
+  title: JSONPlaceholder Example API
+  description: A mock OpenAPI spec to test AASE Shadow API diffing.
+  version: 1.0.0
+servers:
+  - url: https://jsonplaceholder.typicode.com
+paths:
+  /users/1:
+    get:
+      summary: Get user details
+      description: Retrieves details of a specific user.
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+  /posts:
+    post:
+      summary: Create a post
+      description: Creates a new post.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                body:
+                  type: string
+                userId:
+                  type: integer
+      responses:
+        '201':
+          description: Created
+  # Note: /posts/1 (PUT) is deliberately missing from this spec
+  # so that AASE will flag it as a "Shadow/Undocumented API" during diffing!
+
+  /comments:
+    get:
+      summary: List all comments
+      description: Retrieves a list of comments. Unimplemented in the HAR!
+      responses:
+        '200':
+          description: OK

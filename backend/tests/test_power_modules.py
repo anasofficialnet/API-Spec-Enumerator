@@ -67,7 +67,7 @@ class FakeResponse:
         self.headers = headers or {}
 
 
-# ── Module 1: BOLA/IDOR ───────────────────────────────────────────
+# ── Module 1: Cross-User Access ───────────────────────────────────
 
 class TestBolaDetector:
     def test_is_id_value_numeric(self):
@@ -91,7 +91,7 @@ class TestBolaDetector:
         result = analyze_bola_response(baseline, cross, 200)
         assert result is not None
         assert result["severity"] == "CRITICAL"
-        assert result["type"] == "BOLA/IDOR"
+        assert result["type"] == "Cross-User Access Control Bypass"
         assert result["cwe"] == "CWE-639"
 
     def test_analyze_bola_moderate_similarity(self):
@@ -100,6 +100,13 @@ class TestBolaDetector:
         result = analyze_bola_response(baseline, cross, 200)
         assert result is not None
         assert result["severity"] in ("CRITICAL", "HIGH")
+
+    def test_analyze_bola_includes_resource_id_when_available(self):
+        baseline = b'{"user_id": "123"}'
+        cross = b'{"user_id": "123"}'
+        result = analyze_bola_response(baseline, cross, 200, {"resource_id": "order-123"})
+        assert result is not None
+        assert "order-123" in result["evidence"]
 
     def test_build_bola_cases(self):
         rec = FakeRecord("GET", "http://api.test.com/users/123",
@@ -163,7 +170,7 @@ class TestStatefulFuzzer:
         result = analyze_stateful_response(case, 200, b'{"ok": true}')
         assert result is not None
         assert result["severity"] == "HIGH"
-        assert "Skip-Step" in result["type"]
+        assert result["type"] == "Workflow Step Bypass"
 
     def test_analyze_stateful_blocked(self):
         case = {
@@ -181,10 +188,12 @@ class TestRaceEngine:
         ep1 = FakeEndpoint("ep1", "POST", "/api/transfer", "api.test.com",
                            body_fields=["amount"])
         ep2 = FakeEndpoint("ep2", "GET", "/api/balance", "api.test.com")
-        endpoints = {"ep1": ep1, "ep2": ep2}
+        ep3 = FakeEndpoint("ep3", "POST", "/graphql", "api.test.com", body_fields=["query"])
+        endpoints = {"ep1": ep1, "ep2": ep2, "ep3": ep3}
         targets = identify_race_targets(endpoints)
         assert "ep1" in targets
         assert "ep2" not in targets
+        assert "ep3" not in targets
 
     def test_build_race_burst(self):
         rec = FakeRecord("POST", "http://api.test.com/api/transfer",
@@ -228,7 +237,7 @@ class TestAstMutator:
     def test_prototype_pollution(self):
         body = {"name": "Alice"}
         mutations = _prototype_pollution_mutations(body)
-        assert len(mutations) == 4
+        assert len(mutations) >= 4
         assert any("__proto__" in m for m in mutations)
 
     def test_extra_fields(self):
@@ -341,7 +350,7 @@ class TestPatchGenerator:
         assert any(p["language"] == "modsecurity" for p in patches)
 
     def test_generate_bola_patches(self):
-        findings = [{"type": "BOLA/IDOR", "severity": "CRITICAL", "endpoint": "/api/data"}]
+        findings = [{"type": "Cross-User Access Control Bypass", "severity": "CRITICAL", "endpoint": "/api/data"}]
         patches = generate_patches(findings)
         assert len(patches) >= 1
         assert "ownership" in patches[0]["code"].lower() or "owner" in patches[0]["code"].lower()

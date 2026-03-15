@@ -32,11 +32,11 @@ const STEPS = [
     icon: "BoltIcon",
     title: "Fuzz & Report",
     subtitle: "Rate-limited · Safe",
-    desc: "Intelligently generated fuzz cases replay against your target at a safe rate with your auth tokens. Findings are ranked by severity and exported as a report.",
-    code: `[!] CRITICAL: SQLi /users?id=
-[!] HIGH: BOLA /orders/{id}
-[+] 2,104 cases. 12 findings.
-[+] Report: report_2026.html`,
+    desc: "Intelligently generated fuzz cases replay against your target at a safe rate with your auth tokens. Findings are evidence-backed heuristics ranked by severity and exported as a report.",
+    code: `[!] MEDIUM: Potential SQLI Surface /users?id=
+ [!] HIGH: Race Condition /transfer
+ [+] 2,104 cases. 12 findings.
+ [+] Report: report_2026.html`,
     color: "#FF8C42",
   },
 ];

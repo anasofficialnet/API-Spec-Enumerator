@@ -1,9 +1,9 @@
 """
 AASE Module 2: Stateful Sequential Fuzzing
-===========================================
+==========================================
 Discovers multi-step API workflows from traffic order and
-generates fuzzing cases that exploit business logic flaws
-by skipping steps, replaying steps, or mutating intermediate state.
+generates cases that test business-logic flaws by skipping steps,
+replaying steps, or mutating intermediate state.
 """
 from __future__ import annotations
 
@@ -274,7 +274,7 @@ def analyze_stateful_response(
         if attack == "skip_step":
             return {
                 "severity": "HIGH",
-                "type": "Business Logic Bypass (Skip-Step)",
+                "type": "Workflow Step Bypass",
                 "evidence": (
                     f"Final step succeeded (HTTP {status_code}) after skipping step {meta.get('skipped_step')}. "
                     f"Chain: {meta.get('chain_desc', 'N/A')}"
@@ -290,7 +290,7 @@ def analyze_stateful_response(
         elif attack == "replay":
             return {
                 "severity": "MEDIUM",
-                "type": "Replay/Idempotency Issue",
+                "type": "Workflow Replay Abuse",
                 "evidence": (
                     f"Replayed {meta.get('replayed_path', 'N/A')} succeeded (HTTP {status_code}). "
                     f"Chain: {meta.get('chain_desc', 'N/A')}"
@@ -305,7 +305,7 @@ def analyze_stateful_response(
         elif attack == "reverse_order":
             return {
                 "severity": "HIGH",
-                "type": "Business Logic Bypass (Reverse Order)",
+                "type": "Workflow Order Bypass",
                 "evidence": (
                     f"Final step executed out of order succeeded (HTTP {status_code}). "
                     f"Chain: {meta.get('chain_desc', 'N/A')}"
@@ -320,7 +320,7 @@ def analyze_stateful_response(
         elif attack == "mutate_intermediate":
             return {
                 "severity": "MEDIUM",
-                "type": "Business Logic Bypass (State Mutation)",
+                "type": "Workflow State Tampering",
                 "evidence": (
                     f"Final step succeeded (HTTP {status_code}) after mutating intermediate state. "
                     f"Mutated: {meta.get('mutated_step', 'N/A')}"

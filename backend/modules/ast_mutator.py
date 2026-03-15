@@ -63,7 +63,15 @@ def _type_swap_mutations(body: dict) -> List[dict]:
             m = dict(body)
             m[key] = not value
             mutations.append(m)
-    return mutations[:8]  # Cap mutations per type
+            # Bool → String
+            m = dict(body)
+            m[key] = str(value)
+            mutations.append(m)
+            # Bool → Int
+            m = dict(body)
+            m[key] = int(value)
+            mutations.append(m)
+    return mutations[:15]  # Cap mutations per type
 
 
 def _deep_nesting_mutations(body: dict) -> List[dict]:
@@ -117,19 +125,29 @@ def _oversized_mutations(body: dict) -> List[dict]:
     """Generate oversized values to test buffer handling."""
     mutations = []
     for key, value in list(body.items())[:3]:
-        # Very long string (10KB)
+        # Very long string (100KB)
         m = dict(body)
-        m[key] = "A" * 10000
+        m[key] = "A" * 100000
         mutations.append(m)
 
         # Very large number
         m = dict(body)
-        m[key] = 10 ** 308
+        m[key] = 10 ** 500
+        mutations.append(m)
+        
+        # Negative large number
+        m = dict(body)
+        m[key] = -(10 ** 500)
         mutations.append(m)
 
-        # Unicode stress
+        # Unicode stress / Null Byte Injection
         m = dict(body)
-        m[key] = "\u0000" * 100 + "\uffff" * 100
+        m[key] = "\u0000" * 500 + "A" * 500 + "\uffff" * 500
+        mutations.append(m)
+        
+        # SQLi / XSS combined stress
+        m = dict(body)
+        m[key] = "' OR 1=1; <script>alert(1)</script> \u0000"
         mutations.append(m)
     return mutations
 
@@ -137,10 +155,13 @@ def _oversized_mutations(body: dict) -> List[dict]:
 def _prototype_pollution_mutations(body: dict) -> List[dict]:
     """Inject prototype pollution payloads."""
     payloads = [
-        {"__proto__": {"admin": True, "role": "admin"}},
-        {"constructor": {"prototype": {"admin": True}}},
-        {"__proto__": {"isAdmin": True}},
-        {"constructor": {"prototype": {"isAdmin": True}}},
+        {"__proto__": {"admin": True, "role": "admin", "isAdmin": True}},
+        {"constructor": {"prototype": {"admin": True, "role": "admin"}}},
+        {"__proto__": {"isAdmin": True, "privilege": 1}},
+        {"constructor": {"prototype": {"isAdmin": True, "privilege": 1}}},
+        {"__proto__": {"length": 100000}},
+        {"__proto__": {"toString": "1"}},
+        {"constructor": {"prototype": {"valueOf": "1"}}},
     ]
     mutations = []
     for payload in payloads:
@@ -156,12 +177,20 @@ def _extra_field_mutations(body: dict) -> List[dict]:
         {"admin": True},
         {"role": "admin"},
         {"is_admin": True},
+        {"isAdmin": True},
         {"privilege": "superadmin"},
         {"user_type": "admin"},
         {"permissions": ["*", "admin", "write", "delete"]},
         {"verified": True, "email_verified": True},
         {"price": 0, "amount": 0, "total": 0},
         {"discount": 100, "coupon": "FREE"},
+        {"status": "active"},
+        {"account_balance": 9999999},
+        {"is_superuser": True, "superuser": True},
+        {"group": "admin", "group_id": 1},
+        {"tenant_id": 1},
+        {"org_id": 1, "organization_id": 1},
+        {"plan": "enterprise", "subscription": "premium"},
     ]
     mutations = []
     for extra in extra_fields:

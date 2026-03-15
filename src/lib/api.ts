@@ -1,7 +1,18 @@
-export const API_BASE = (process.env.NEXT_PUBLIC_BACKEND_URL || "/api").replace(/\/+$/, "");
+const rawApiBase = (
+  process.env.NEXT_PUBLIC_BACKEND_URL ||
+  process.env.NEXT_PUBLIC_API_BASE ||
+  "/api"
+).replace(/\/+$/, "");
+
+export const API_BASE = rawApiBase.replace(/\/api$/, "");
+
+export function apiUrl(path: string): string {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${API_BASE}${normalizedPath}`;
+}
 
 export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(apiUrl(path), {
     ...options,
   });
   if (!res.ok) {

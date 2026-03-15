@@ -31,6 +31,9 @@ def identify_race_targets(endpoints: dict) -> List[str]:
         # Only POST/PUT/PATCH are state-changing
         if ep.method not in ("POST", "PUT", "PATCH"):
             continue
+        # Skip well-known query transports that are noisy false positives.
+        if "graphql" in ep.path.lower():
+            continue
         # Check if path contains race-prone keywords
         if RACE_KEYWORDS.search(ep.path):
             targets.append(eid)

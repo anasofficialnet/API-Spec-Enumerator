@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Icon from "@/components/ui/AppIcon";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { API_BASE, apiFetch } from "@/lib/api";
+import { apiFetch, apiUrl } from "@/lib/api";
 
 interface ReportFinding {
   id: string;
@@ -17,6 +17,12 @@ interface ReportFinding {
   evidence: string;
   request: string;
   response: string;
+  request_url?: string;
+  replay_curl?: string;
+  request_summary?: string;
+  response_summary?: string;
+  developer_notes?: string;
+  verification_steps?: string[];
   recommendation: string;
   cwe: string;
   timestamp: string;
@@ -38,7 +44,7 @@ export default function ReportsInteractive() {
 
   const [severityFilter, setSeverityFilter] = useState<string>("ALL");
   const [selectedFinding, setSelectedFinding] = useState<ReportFinding | null>(null);
-  const [detailTab, setDetailTab] = useState<"evidence" | "request" | "response" | "fix">("evidence");
+  const [detailTab, setDetailTab] = useState<"replay" | "evidence" | "request" | "response" | "fix">("replay");
   const [findings, setFindings] = useState<ReportFinding[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -76,7 +82,7 @@ export default function ReportsInteractive() {
   const handleExport = async () => {
     if (!scanId) return;
     try {
-      const res = await fetch(`${API_BASE}/api/scan/${scanId}/export.json`);
+      const res = await fetch(apiUrl(`/api/scan/${scanId}/export.json`));
       if (!res.ok) throw new Error("Export failed");
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -100,7 +106,7 @@ export default function ReportsInteractive() {
 
   const handleExportHtml = async () => {
     if (!scanId) return;
-    const res = await fetch(`${API_BASE}/api/scan/${scanId}/export.html`);
+    const res = await fetch(apiUrl(`/api/scan/${scanId}/export.html`));
     if (!res.ok) return;
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
@@ -111,7 +117,8 @@ export default function ReportsInteractive() {
     URL.revokeObjectURL(url);
   };
 
-  const DETAIL_TABS: { id: "evidence" | "request" | "response" | "fix"; label: string }[] = [
+  const DETAIL_TABS: { id: "replay" | "evidence" | "request" | "response" | "fix"; label: string }[] = [
+    { id: "replay", label: "Replay" },
     { id: "evidence", label: "Evidence" },
     { id: "request", label: "Request" },
     { id: "response", label: "Response" },
@@ -362,6 +369,53 @@ export default function ReportsInteractive() {
                   </div>
 
                   <div className="mt-4 h-[440px] overflow-y-auto bg-[rgba(0,0,0,0.4)] rounded p-4 border border-[rgba(99, 102, 241,0.06)]">
+                    {detailTab === "replay" && (
+                      <div className="space-y-4">
+                        <div>
+                          <div className="font-mono text-[10px] uppercase tracking-widest text-[#94A3B8] mb-2">Replay URL</div>
+                          <pre className="font-mono text-[11px] text-[#F8FAFC] whitespace-pre-wrap">
+                            {selectedFinding.request_url || `${selectedFinding.method} ${selectedFinding.endpoint}`}
+                          </pre>
+                        </div>
+                        <div>
+                          <div className="font-mono text-[10px] uppercase tracking-widest text-[#94A3B8] mb-2">Replay Command</div>
+                          <pre className="font-mono text-[11px] text-[#4FC3F7] whitespace-pre-wrap">
+                            {selectedFinding.replay_curl || "Replay command not available for this finding."}
+                          </pre>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <div className="font-mono text-[10px] uppercase tracking-widest text-[#94A3B8] mb-2">Request Summary</div>
+                            <pre className="font-mono text-[11px] text-[#F8FAFC] whitespace-pre-wrap">
+                              {selectedFinding.request_summary || "No request summary recorded."}
+                            </pre>
+                          </div>
+                          <div>
+                            <div className="font-mono text-[10px] uppercase tracking-widest text-[#94A3B8] mb-2">Response Summary</div>
+                            <pre className="font-mono text-[11px] text-[#F8FAFC] whitespace-pre-wrap">
+                              {selectedFinding.response_summary || "No response summary recorded."}
+                            </pre>
+                          </div>
+                        </div>
+                        <div>
+                          <div className="font-mono text-[10px] uppercase tracking-widest text-[#94A3B8] mb-2">Developer Notes</div>
+                          <pre className="font-mono text-[11px] text-[#FDE68A] whitespace-pre-wrap">
+                            {selectedFinding.developer_notes || selectedFinding.recommendation}
+                          </pre>
+                        </div>
+                        <div>
+                          <div className="font-mono text-[10px] uppercase tracking-widest text-[#94A3B8] mb-2">Verification Steps</div>
+                          <ol className="list-decimal pl-5 space-y-2 font-mono text-[11px] text-[#F8FAFC]">
+                            {(selectedFinding.verification_steps || [
+                              "Replay the request and confirm the same result.",
+                              "Apply the fix and verify the behavior no longer reproduces.",
+                            ]).map((step, index) => (
+                              <li key={`${selectedFinding.id}-step-${index}`}>{step}</li>
+                            ))}
+                          </ol>
+                        </div>
+                      </div>
+                    )}
                     {detailTab === "evidence" && (
                       <pre className="font-mono text-[11px] text-[#F8FAFC] whitespace-pre-wrap">{selectedFinding.evidence}</pre>
                     )}

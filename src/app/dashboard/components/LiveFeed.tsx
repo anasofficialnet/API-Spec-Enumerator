@@ -16,9 +16,11 @@ export interface Finding {
 interface LiveFeedProps {
   findings: Finding[];
   isRunning: boolean;
+  isCancelled?: boolean;
   progress: number;
   casesRun: number;
   totalCases: number;
+  onCancel?: () => void;
 }
 
 const SEV_CLASS: Record<string, string> = {
@@ -37,7 +39,15 @@ const SEV_ICON: Record<string, string> = {
   INFO: "InformationCircleIcon",
 };
 
-export default function LiveFeed({ findings, isRunning, progress, casesRun, totalCases }: LiveFeedProps) {
+export default function LiveFeed({
+  findings,
+  isRunning,
+  isCancelled = false,
+  progress,
+  casesRun,
+  totalCases,
+  onCancel,
+}: LiveFeedProps) {
   const feedRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -66,6 +76,19 @@ export default function LiveFeed({ findings, isRunning, progress, casesRun, tota
               </span>
             </div>
           )}
+          {isCancelled && !isRunning && (
+            <span className="font-mono text-[10px] text-[#FF8C42] uppercase tracking-widest">
+              cancelled
+            </span>
+          )}
+          {isRunning && onCancel && (
+            <button
+              onClick={onCancel}
+              className="px-2.5 py-1 border border-[rgba(255,79,79,0.25)] rounded font-mono text-[10px] text-[#FF4F4F] uppercase tracking-widest hover:bg-[rgba(255,79,79,0.08)] transition-all"
+            >
+              Cancel Scan
+            </button>
+          )}
           <span className="font-mono text-[10px] text-[#475569] uppercase tracking-widest">
             {findings.length} findings
           </span>
@@ -90,13 +113,24 @@ export default function LiveFeed({ findings, isRunning, progress, casesRun, tota
 
       {/* Findings feed */}
       <div ref={feedRef} className="flex-1 overflow-y-auto p-4 space-y-2">
-        {findings.length === 0 && !isRunning && (
+        {findings.length === 0 && !isRunning && !isCancelled && (
           <div className="flex flex-col items-center justify-center h-40 gap-3 text-center">
             <div className="w-10 h-10 rounded border border-[rgba(99, 102, 241,0.12)] bg-[rgba(99, 102, 241,0.04)] flex items-center justify-center">
               <Icon name="MagnifyingGlassIcon" size={20} className="text-[#475569]" />
             </div>
             <p className="font-mono text-xs text-[#475569] uppercase tracking-widest">
               Awaiting scan
+            </p>
+          </div>
+        )}
+
+        {findings.length === 0 && isCancelled && !isRunning && (
+          <div className="flex flex-col items-center justify-center h-40 gap-3 text-center">
+            <div className="w-10 h-10 rounded border border-[rgba(255,140,66,0.2)] bg-[rgba(255,140,66,0.08)] flex items-center justify-center">
+              <Icon name="StopCircleIcon" size={20} className="text-[#FF8C42]" />
+            </div>
+            <p className="font-mono text-xs text-[#FF8C42] uppercase tracking-widest">
+              Scan cancelled
             </p>
           </div>
         )}

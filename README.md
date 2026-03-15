@@ -1,146 +1,325 @@
-<div align="center">
-  <h1><b>AASE - Adaptive API Spec Enumerator</b></h1>
-  <p><i>A powerful, local-first API traffic analysis and fuzzing tool.</i></p>
+# AASE
 
-  [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-  [![React](https://img.shields.io/badge/React-19-blue.svg)](https://react.dev)
-  [![Next.js](https://img.shields.io/badge/Next.js-15-black.svg)](https://nextjs.org)
-  [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)](https://fastapi.tiangolo.com)
-</div>
+AASE is a local-first API security scanner built with Next.js and FastAPI. It ingests captured HTTP traffic, normalizes it into endpoint inventory, generates scan cases from real request shapes, and executes those cases against an allowlisted target.
 
-<div align="center">
-  <b>🟢 Live App: <a href="https://api-spec-enumerator.vercel.app">api-spec-enumerator.vercel.app</a></b>
-</div>
+The project is designed for authorized API testing, internal verification, and repeatable local analysis. The current codebase includes live request execution, source-aware endpoint discovery, scan preview, cancellation, reporting, and several focused API security modules.
 
-<hr/>
+## What AASE does today
 
-## ✨ What is AASE?
+### Traffic ingestion and normalization
 
-**AASE (Adaptive API Spec Enumerator)** is a fast, offline-capable security tool designed to analyze API traffic and automatically discover attack surfaces. 
+AASE ingests:
 
-It takes captured HTTP traffic (from browsers, Burp Suite, or mitmproxy) as input, groups requests into normalized API endpoints, automatically crafts fuzzing test cases, and runs them against the target.
+- HAR files
+- Burp Suite XML
+- mitmproxy JSON
+- JSONL or NDJSON traffic
+- raw pasted HTTP requests
 
-The project consists of two powerful components:
-1. **The Frontend**: A blazingly fast `Next.js` and `React 19` interface.
-2. **The Backend**: A `FastAPI` server for rapid parsing, payload generation, and execution.
+Captured requests are grouped into normalized endpoints such as:
 
----
+- `GET /users/1` -> `GET /users/{id}`
+- `GET /orders/55` -> `GET /orders/{id}`
 
-## 🚀 Key Features
+The backend keeps request structure, inferred parameters, body fields, auth hints, and per-endpoint case counts.
 
-### 📥 Universal Traffic Ingestion
-Upload your captured API traffic with drag-and-drop ease. Supported formats:
-- **HAR (`.har`)**: Best format, exported straight from browser DevTools.
-- **Burp Suite XML (`.xml`)**: Export your Burp history directly.
-- **mitmproxy JSON (`.json`)**: Raw mitmproxy dumps.
-- **JSON Lines (`.jsonl`, `.ndjson`)**: One request record per line.
-- **Raw HTTP Paste**: Paste raw HTTP requests straight into the dashboard.
+### Source-aware endpoint inventory
 
-### 🧠 Smart Endpoint Discovery
-AASE intelligently parses hundreds of requests and normalizes dynamic segments. 
-For example:
-- `GET /api/users/1` and `GET /api/users/42` automatically become `GET /api/users/{id}`.
-It automatically calculates exactly how many potential fuzzing vectors are present on every discovered endpoint.
+Each endpoint row carries discovery metadata so the UI can show where it came from and how trustworthy it is.
 
-### 🛡️ Safe & Aggressive Probe Generation
-- **Safe Mode**: Checks for basic baseline responses, missing CORS headers, hidden parameters, and simple authentication bypasses.
-- **Aggressive Mode**: Intelligently mutates body payloads and query strings looking for edge-case vulnerabilities like **SQLi, XSS, and SSTI**.
-- **Dry Run**: Validate your targets, parsed parameters, and generated test queries without sending a single byte of real traffic.
+Source labels:
 
-### 📊 Operator-Friendly Reporting & Exporting
-Get real-time feedback during live scans via Server-Sent Events (SSE). Once a scan completes, you can review everything in the **Findings** tab. From there, you have two powerful export options:
-- **Export JSON**: Downloads a complete, machine-readable `aase_report_xyz.json` file containing all discovered vectors, request/response pairs, and metadata. Perfect for piping into other CLI tools or custom scripts.
-- **Export HTML**: Generates a beautiful, single-file, standalone HTML executive report. It color-codes findings by severity (Critical to Info), includes embedded CVSS/CWE data, and provides remediation advice. You can immediately email this to developers.
+| Internal source | UI label | Meaning |
+| --- | --- | --- |
+| `traffic` | Captured Traffic | Parsed directly from uploaded traffic or raw HTTP paste |
+| `spec` | API Documentation | Extracted from Swagger or OpenAPI |
+| `crawl` | Frontend Discovery | Extracted from HTML, JavaScript, or source maps |
+| `response_link` | Response Discovery | Extracted from URLs and paths inside API responses |
+| `seed_probe` | Recon Guess | Seeded recon probe such as `/graphql` or `/openapi.json` |
+| `unknown` | Unknown | Fallback when metadata is not available |
 
-### ⚙️ Advanced Fuzzing Configuration
-For advanced operators, AASE supports a highly tunable fuzzing engine via its backend configuration architecture:
-- **Payload Dictionaries**: The engine utilizes custom SQLi, XSS, and SSTI payloads during Aggressive Mode.
-- **Target Overrides**: Seamlessly rewrite the base URL (e.g., from `localhost` to `staging.api.com`) during test execution without altering your ingested capture files.
+When multiple records collapse into the same normalized endpoint, AASE preserves all known sources and promotes the highest-trust source as the primary label.
 
----
+Trust order:
 
-## 🛠️ How It Works (Architecture)
+1. Captured Traffic
+2. API Documentation
+3. Frontend Discovery
+4. Response Discovery
+5. Recon Guess
+6. Unknown
 
-> [!IMPORTANT]
-> **Cloud Deployment (Free Tier Sleep Warning)**
-> The live deployment of this application runs its frontend on Vercel and its backend on Render's free tier. 
-> Render's free servers **automatically spin down and go to sleep** after 15 minutes of inactivity. 
-> 
-> If you visit the site and try to upload a file for the first time in a while, it may take **45 to 60 seconds** for the backend to wake up. Please be patient on the first upload! Every subsequent request will be lightning fast.
+Seeded recon endpoints also carry discovery status:
 
-- **Frontend Environment**: Next.js 15, hosted on Vercel Edge.
-- **Backend API**: Python FastAPI, hosted as a Python 3 Web Service on Render.
+- `guessed`
+- `confirmed`
+- `failed`
+- `derived`
 
----
+### Deep auto-recon
 
-## 💻 How Can You Use It?
+AASE supports direct target recon through the backend. Current recon combines:
 
-### Prerequisites
+- seeded API and documentation probes
+- HTML link extraction
+- JavaScript route extraction
+- frontend bundle discovery
+- source-map discovery through `sourceMappingURL`
+- source-map parsing from `sources` and `sourcesContent`
+- JSON response path extraction
+- OpenAPI and Swagger parsing
 
-You need the following installed:
-- Node.js (v18+) and npm
-- Python (v3.10+) and pip
+This is stronger than simple wordlist probing because it can lift endpoints from frontend bundles and structured API responses, not only from guessed paths.
 
-### Installation
+Important scope note:
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/anasofficialnet/API-Spec-Enumerator.git
-   cd API-Spec-Enumerator
-   ```
+- Recon still includes seeded guesses, but those endpoints are labeled as `Recon Guess` in the inventory
+- discovered routes from bundles, source maps, responses, and specs are tracked separately
 
-2. **Install Frontend Dependencies:**
-   ```bash
-   npm install
-   ```
+### Scan planning and live execution
 
-3. **Install Backend Dependencies:**
-   ```bash
-   cd backend
-   pip install -r requirements.txt
-   cd ..
-   ```
+AASE has both preview and live execution paths.
 
-### Running the App Locally
+Preview mode:
 
-To start the local command center, you can run a single command that orchestrates both frontend and backend:
+- builds the real scan plan
+- returns exact case counts per selected endpoint
+- does not execute network requests
+
+Live mode:
+
+- runs asynchronous HTTP requests with `httpx`
+- supports rate limiting and concurrency control
+- supports retry and exponential backoff for transient errors
+- supports scan cancellation through `POST /api/scan/{scan_id}/cancel`
+- streams progress through Server-Sent Events
+
+### Scan configuration and guardrails
+
+The scan panel includes:
+
+- Safe, Standard, and Aggressive presets
+- context-aware validation for risky modules
+- help tooltips for every control
+- exact case preview before execution
+
+Examples of built-in guardrails:
+
+- BOLA or IDOR detection requires a second user token
+- OAST requires a reachable callback URL
+- Auto Login requires login URL, username, and password
+- race testing is blocked when only read endpoints are selected
+- GraphQL and WebSocket probing is only recommended when matching endpoints exist
+
+### Security modules in the current implementation
+
+AASE currently includes:
+
+- auth checks
+- hidden parameter probing
+- CORS checks
+- verbose error detection
+- SQLi, XSS, and SSTI payload families
+- BOLA or IDOR detection
+- stateful workflow fuzzing
+- race-condition testing
+- JSON mutation testing
+- GraphQL probing
+- WebSocket upgrade checks
+- attack graph construction
+- auto login and session reuse
+- OAST callback correlation
+- OpenAPI shadow API diffing
+- patch suggestion generation
+
+### Developer-grade output
+
+Findings are exported with developer-oriented detail, not only severity summaries.
+
+Each recorded finding can include:
+
+- replay URL
+- replay `curl`
+- request summary
+- response summary
+- developer notes
+- verification steps
+- recommendation
+- CWE
+- CVSS
+
+Available exports:
+
+- `GET /api/scan/{scan_id}/export.json`
+- `GET /api/scan/{scan_id}/export.html`
+
+The HTML report is standalone and styled for sharing. The report UI in the frontend also exposes replay and remediation detail.
+
+## Architecture
+
+AASE is split into a React frontend and a FastAPI backend.
+
+Frontend:
+
+- Next.js 15
+- React 19
+- dashboard for ingestion, endpoint selection, scan configuration, findings, shadow API review, and attack graph inspection
+
+Backend:
+
+- FastAPI control API
+- ingestion and parsing pipeline
+- endpoint normalization and case planning
+- async scan runner
+- SSE status stream
+- reporting and export routes
+
+Core backend routes:
+
+- `POST /api/ingest`
+- `POST /api/ingest/paste`
+- `POST /api/recon`
+- `POST /api/scan/{scan_id}/preview`
+- `POST /api/scan/{scan_id}/run`
+- `POST /api/scan/{scan_id}/cancel`
+- `GET /api/scan/{scan_id}/status`
+- `GET /api/scan/{scan_id}/events`
+- `GET /api/scan/{scan_id}/attack-graph`
+- `POST /api/scan/{scan_id}/openapi`
+- `GET /api/scan/{scan_id}/shadow-report`
+- `GET /api/scan/{scan_id}/patches`
+- `GET /api/scan/{scan_id}/oast`
+- `GET /api/scan/{scan_id}/export.json`
+- `GET /api/scan/{scan_id}/export.html`
+
+## Honest scope and current limitations
+
+This project is real, but it should be described honestly.
+
+Current limitations:
+
+- Auto Login is HTTP-session based. It supports common JSON and form login patterns, cookie reuse, token capture, and CSRF extraction. It is not a headless browser OAuth or SSO engine.
+- OAST support is HTTP callback based and correlated inside the app. It is not a managed external DNS plus HTTP OAST platform.
+- WebSocket support currently focuses on upgrade, origin, and auth checks. It is not full message-frame fuzzing.
+- Recon combines guessed and discovered endpoints. The source label in the endpoint inventory is the intended trust signal.
+- Some finding classes are stronger proof than others. For example, confirmed cross-user access replays and blind callback evidence are stronger than low-severity reflection or behavior-change heuristics.
+
+## Local setup
+
+### Requirements
+
+- Node.js 18 or later
+- Python 3.10 or later
+
+### Install
+
+```bash
+npm install
+pip install -r backend/requirements.txt
+```
+
+### Configure frontend to backend
+
+The frontend reads the backend origin from `.env.example`:
+
+```bash
+NEXT_PUBLIC_API_BASE=http://127.0.0.1:8010
+```
+
+You can use either:
+
+- `NEXT_PUBLIC_API_BASE`
+- `NEXT_PUBLIC_BACKEND_URL`
+
+### Run locally
+
+Start both frontend and backend:
 
 ```bash
 npm run dev
 ```
 
-*(This uses `concurrently` to bring up the FastAPI backend on port 8010, and Next.js on port 4028.)*
+Default local ports:
 
-Open your browser to: **[http://localhost:4028](http://localhost:4028)**
+- frontend: `http://127.0.0.1:4028`
+- backend: `http://127.0.0.1:8010`
 
----
+## Safe local verification
 
-## 🧪 Testing an Example
+AASE includes a safe mock target and an end-to-end verification script so you can validate the full flow without touching third-party systems.
 
-Want to see it in action without a target? We got you.
+Start the mock API:
 
-1. Once the app is running, navigate to the Dashboard.
-2. Drag and drop the provided example file located at `examples/sample.har`.
-3. AASE will immediately parse out the simulated architecture:
-   - `GET /api/users`
-   - `GET /api/users/{id}`
-   - `POST /api/users`
-   - `POST /api/auth/login`
-4. Set **Dry Run Mode** to `On` and hit "Start New Scan".
-5. Watch the 3D dashboard adapt while generating the security probe cases!
+```bash
+python -m uvicorn backend.mock_target:app --host 127.0.0.1 --port 8055
+```
 
----
+Start the app:
 
-## 🔒 Security & Safety Notes
+```bash
+npm run dev
+```
 
-- **Never fuzz applications without authorization!** This tool is strictly intended for local development, research, and authorized penetration testing on systems you explicitly control!
-- AASE strictly respects standard `robots.txt` paths by default during live scans to prevent unexpected crawling.
-- No remote telemetry or analytics exist in AASE. All scan logic, parameters, and results reside locally within memory. Backend state drops completely upon restarting the process.
+Run the safe E2E flow:
 
----
+```bash
+python backend/e2e_safe_test.py
+```
 
-<br/>
-<div align="center">
-  <b>Built with ❤️ by Anas, focusing on the future of clean, automated AppSec.</b><br/>
-  <a href="https://github.com/anasofficialnet/API-Spec-Enumerator/issues">Report an issue</a> • <a href="https://github.com/anasofficialnet/API-Spec-Enumerator/pulls">Submit a pull request</a>
-</div>
+That flow exercises:
+
+- auto-recon
+- endpoint ingestion
+- attack graph generation
+- exact preview counts
+- live scan execution
+- OAST event recording
+- HTML report export
+- scan cancellation
+
+## Example files
+
+Included example inputs:
+
+- [examples/sample.har](examples/sample.har)
+- [examples/sample.jsonl](examples/sample.jsonl)
+- [examples/sample_raw_http.txt](examples/sample_raw_http.txt)
+- [example_spec.yaml](example_spec.yaml)
+
+## Testing
+
+Backend tests:
+
+```bash
+python -m pytest backend/tests/test_parsers.py backend/tests/test_power_modules.py backend/tests/test_scan_validation.py backend/tests/test_reporting.py -q -p no:cacheprovider
+```
+
+Frontend utility tests:
+
+```bash
+node --test src/app/dashboard/components/scanConfigUtils.test.mjs src/app/dashboard/components/endpointSource.test.mjs
+```
+
+Type check:
+
+```bash
+npx tsc --noEmit --incremental false
+```
+
+## Safety
+
+- Only test systems you own or are explicitly authorized to assess
+- Keep aggressive payloads, race testing, and live OAST callbacks for controlled environments
+- Use preview and dry run first when validating new targets
+- Use the allowlist and target-base override deliberately
+
+## Repository highlights
+
+- [backend/main.py](backend/main.py)
+- [backend/modules/auto_recon.py](backend/modules/auto_recon.py)
+- [backend/modules/report_generator.py](backend/modules/report_generator.py)
+- [backend/modules/attack_graph.py](backend/modules/attack_graph.py)
+- [backend/mock_target.py](backend/mock_target.py)
+- [src/app/dashboard/components/DashboardInteractive.tsx](src/app/dashboard/components/DashboardInteractive.tsx)
+- [src/app/dashboard/components/FuzzConfig.tsx](src/app/dashboard/components/FuzzConfig.tsx)
+- [src/app/reports/components/ReportsInteractive.tsx](src/app/reports/components/ReportsInteractive.tsx)

@@ -5,19 +5,59 @@ import UploadPanel, { TrafficData, EndpointData } from "./UploadPanel";
 import EndpointList from "./EndpointList";
 import FuzzConfig, { FuzzSettings } from "./FuzzConfig";
 import LiveFeed, { Finding } from "./LiveFeed";
+import AttackGraphPanel, { AttackGraphData } from "./AttackGraphPanel";
+import { applyScanPreset, buildScanValidation } from "./scanConfigUtils";
 import Icon from "@/components/ui/AppIcon";
-import Link from "next/link";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, apiUrl } from "@/lib/api";
 
 interface ScanStatus {
   isRunning: boolean;
+  isCancelled?: boolean;
   progress: number;
   casesRun: number;
   totalCases: number;
   findings: Finding[];
+  dry_run_log?: Array<{ id: string; method: string; url: string; ep_key: string }>;
+  lastError?: string | null;
 }
 
-type Tab = "upload" | "endpoints" | "fuzz" | "findings" | "shadow" | "patches";
+interface ScanPreview {
+  totalCases: number;
+  endpointCases: Record<string, number>;
+}
+
+type Tab = "upload" | "endpoints" | "graph" | "fuzz" | "findings" | "shadow" | "patches";
+type ScanPreset = "safe" | "standard" | "aggressive";
+
+export const DEFAULT_FUZZ_CONFIG: FuzzSettings = {
+  targetUrl: "http://127.0.0.1:8055",
+  rateLimit: 2,
+  concurrency: 1,
+  maxRetries: 2,
+  authHeader: "Authorization",
+  authValue: "",
+  cookieString: "",
+  dryRun: false,
+  aggressive: false,
+  categories: ["auth", "hidden_params", "cors", "error_leak"],
+  customHeaders: {},
+  customCookies: {},
+  enableBola: false,
+  bolaUserBToken: "",
+  enableStateful: false,
+  enableRace: false,
+  burstSize: 10,
+  enableMutations: false,
+  enableGraphql: false,
+  enableAttackGraph: false,
+  enableAutoLogin: false,
+  loginUrl: "",
+  loginUser: "",
+  loginPass: "",
+  enableWafEvasion: false,
+  enableOast: false,
+  oastCallbackUrl: "http://127.0.0.1:8010",
+};
 
 export default function DashboardInteractive() {
   const [scanId, setScanId] = useState<string | null>(null);
@@ -25,16 +65,43 @@ export default function DashboardInteractive() {
   const [selectedEndpoints, setSelectedEndpoints] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<Tab>("upload");
   const [isRunning, setIsRunning] = useState(false);
+  const [isCancelled, setIsCancelled] = useState(false);
   const [findings, setFindings] = useState<Finding[]>([]);
   const [progress, setProgress] = useState(0);
   const [casesRun, setCasesRun] = useState(0);
   const [totalCases, setTotalCases] = useState(0);
+  const [previewCases, setPreviewCases] = useState<Record<string, number>>({});
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
+  const streamRef = useRef<EventSource | null>(null);
   const [shadowReport, setShadowReport] = useState<any>(null);
   const [patches, setPatches] = useState<any[]>([]);
+  const [attackGraph, setAttackGraph] = useState<AttackGraphData | null>(null);
+  const [graphLoading, setGraphLoading] = useState(false);
+  const [fuzzConfig, setFuzzConfig] = useState<FuzzSettings>(DEFAULT_FUZZ_CONFIG);
+  const [activePreset, setActivePreset] = useState<ScanPreset>("safe");
+  const selectedEpData: EndpointData[] = trafficData?.endpoints.filter((e) => selectedEndpoints.includes(e.id)) ?? [];
+  const totalSelectedCases = selectedEpData.reduce((sum, endpoint) => (
+    sum + (previewCases[endpoint.id] ?? endpoint.fuzzCases)
+  ), 0);
+  const scanValidation = buildScanValidation(fuzzConfig, {
+    selectedEndpoints: selectedEpData,
+    capabilities: trafficData?.capabilities,
+  });
+
+  const clearLiveUpdates = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.close();
+      streamRef.current = null;
+    }
+  }, []);
 
   const handleUploadComplete = useCallback((data: TrafficData) => {
+    clearLiveUpdates();
     setTrafficData(data);
     setScanId(data.scanId);
     setSelectedEndpoints(data.endpoints.map((e) => e.id));
@@ -43,8 +110,21 @@ export default function DashboardInteractive() {
     setProgress(0);
     setCasesRun(0);
     setTotalCases(0);
+    setPreviewCases({});
+    setIsCancelled(false);
+    setAttackGraph(null);
     setError(null);
-  }, []);
+
+    // Auto-populate the Target Base URL from the ingested traffic
+    const inferredHost = data.hosts && data.hosts.length > 0 ? data.hosts[0] : "";
+    const inferredScheme = inferredHost.includes("127.0.0.1") || inferredHost.includes("localhost") ? "http" : "https";
+    const autoTarget = inferredHost ? `${inferredScheme}://${inferredHost}` : DEFAULT_FUZZ_CONFIG.targetUrl;
+    setActivePreset("safe");
+    setFuzzConfig(applyScanPreset({
+      ...DEFAULT_FUZZ_CONFIG,
+      targetUrl: autoTarget,
+    }, "safe", { capabilities: data.capabilities }));
+  }, [clearLiveUpdates]);
 
   const buildAuthConfig = (config: FuzzSettings) => {
     const auth: { bearer?: string; headers?: Record<string, string>; cookies?: Record<string, string> } = {};
@@ -71,9 +151,145 @@ export default function DashboardInteractive() {
     return Object.keys(auth).length ? auth : null;
   };
 
-  const handleStartFuzz = useCallback(async (config: FuzzSettings) => {
+  const buildRunPayload = useCallback(() => {
+    const url = new URL(fuzzConfig.targetUrl);
+    return {
+      selected_endpoints: selectedEndpoints,
+      config: {
+        allowlist: [url.hostname],
+        target_base_url: fuzzConfig.targetUrl,
+        rate_limit: fuzzConfig.rateLimit,
+        concurrency: fuzzConfig.concurrency,
+        max_retries: fuzzConfig.maxRetries ?? 2,
+        respect_robots: true,
+        aggressive: fuzzConfig.aggressive,
+        auth: buildAuthConfig(fuzzConfig),
+        custom_headers: fuzzConfig.customHeaders || {},
+        custom_cookies: fuzzConfig.customCookies || {},
+        dry_run: fuzzConfig.dryRun,
+        categories: fuzzConfig.categories,
+        enable_bola: fuzzConfig.enableBola,
+        bola_config: fuzzConfig.enableBola && fuzzConfig.bolaUserBToken ? {
+          user_a_auth: buildAuthConfig(fuzzConfig),
+          user_b_auth: { bearer: fuzzConfig.bolaUserBToken },
+        } : null,
+        enable_stateful: fuzzConfig.enableStateful,
+        enable_race: fuzzConfig.enableRace,
+        burst_size: fuzzConfig.burstSize,
+        enable_mutations: fuzzConfig.enableMutations,
+        enable_graphql: fuzzConfig.enableGraphql,
+        enable_attack_graph: fuzzConfig.enableAttackGraph,
+        enable_auto_login: fuzzConfig.enableAutoLogin,
+        login_config: fuzzConfig.enableAutoLogin && fuzzConfig.loginUrl && fuzzConfig.loginUser && fuzzConfig.loginPass ? {
+          login_url: fuzzConfig.loginUrl,
+          username: fuzzConfig.loginUser,
+          password: fuzzConfig.loginPass,
+        } : null,
+        enable_waf_evasion: fuzzConfig.enableWafEvasion,
+        enable_oast: fuzzConfig.enableOast,
+        oast_callback_base_url: fuzzConfig.oastCallbackUrl || null,
+      },
+    };
+  }, [fuzzConfig, selectedEndpoints]);
+
+  const applyStatus = useCallback((status: ScanStatus) => {
+    setIsRunning(status.isRunning);
+    setIsCancelled(Boolean(status.isCancelled));
+    setProgress(status.progress);
+    setCasesRun(status.casesRun);
+    setTotalCases(status.totalCases);
+    if (status.lastError) {
+      setError(status.lastError);
+    }
+
+    let allFindings: Finding[] = status.findings || [];
+    if (fuzzConfig.dryRun && status.dry_run_log) {
+      const dryLog = status.dry_run_log.map((log, i) => ({
+        id: `dry-${i}`,
+        severity: "INFO" as const,
+        type: "Dry Run (Skipped)",
+        endpoint: log.url,
+        method: log.method,
+        evidence: `Case ${log.id} for ${log.ep_key}`,
+        timestamp: new Date().toLocaleTimeString(),
+      }));
+      allFindings = [...allFindings, ...dryLog];
+    }
+    setFindings(allFindings);
+  }, [fuzzConfig.dryRun]);
+
+  const loadAttackGraph = useCallback(async () => {
+    if (!scanId) return;
+    setGraphLoading(true);
+    try {
+      const graph = await apiFetch<AttackGraphData>(`/api/scan/${scanId}/attack-graph`);
+      setAttackGraph(graph);
+    } catch (err: any) {
+      setError(err.message || "Failed to load attack graph");
+    } finally {
+      setGraphLoading(false);
+    }
+  }, [scanId]);
+
+  const startPolling = useCallback(() => {
+    if (!scanId) return;
+
+    const fetchStatus = async () => {
+      try {
+        const status = await apiFetch<ScanStatus>(`/api/scan/${scanId}/status`);
+        applyStatus(status);
+      } catch (err: any) {
+        setError(err.message || "Failed to fetch status");
+      }
+    };
+
+    void fetchStatus();
+    clearLiveUpdates();
+    pollRef.current = setInterval(fetchStatus, 1000);
+  }, [applyStatus, clearLiveUpdates, scanId]);
+
+  const startLiveUpdates = useCallback(() => {
+    if (!scanId) return;
+
+    clearLiveUpdates();
+    if (typeof window === "undefined" || typeof EventSource === "undefined") {
+      startPolling();
+      return;
+    }
+
+    const stream = new EventSource(apiUrl(`/api/scan/${scanId}/events`));
+    streamRef.current = stream;
+    stream.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data) as ScanStatus & { done?: boolean };
+        if (!payload.done) {
+          applyStatus(payload);
+        }
+        if (payload.done || (!payload.isRunning && payload.totalCases > 0 && payload.casesRun >= payload.totalCases)) {
+          stream.close();
+          streamRef.current = null;
+        }
+      } catch {
+        // Fall back to polling if the stream payload becomes invalid.
+        stream.close();
+        streamRef.current = null;
+        startPolling();
+      }
+    };
+    stream.onerror = () => {
+      stream.close();
+      streamRef.current = null;
+      startPolling();
+    };
+  }, [applyStatus, clearLiveUpdates, scanId, startPolling]);
+
+  const handleStartFuzz = useCallback(async () => {
     if (!scanId) {
       setError("No scan loaded");
+      return;
+    }
+    if (scanValidation.hasBlockingIssues) {
+      setError(scanValidation.blockers[0]?.message || "Fix the scan configuration before starting.");
       return;
     }
     setError(null);
@@ -81,14 +297,13 @@ export default function DashboardInteractive() {
     setFindings([]);
     setProgress(0);
     setCasesRun(0);
+    setIsCancelled(false);
     setActiveTab("findings");
+    clearLiveUpdates();
 
-    let allowlist: string[] = [];
-    let targetBase: string | null = null;
+    let payload;
     try {
-      const url = new URL(config.targetUrl);
-      allowlist = [url.hostname];
-      targetBase = config.targetUrl;
+      payload = buildRunPayload();
     } catch {
       setIsRunning(false);
       setError("Invalid target URL");
@@ -99,32 +314,7 @@ export default function DashboardInteractive() {
       await apiFetch(`/api/scan/${scanId}/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          selected_endpoints: selectedEndpoints,
-          config: {
-            allowlist,
-            target_base_url: targetBase,
-            rate_limit: config.rateLimit,
-            concurrency: config.concurrency,
-            respect_robots: true,
-            aggressive: config.aggressive,
-            auth: buildAuthConfig(config),
-            custom_headers: config.customHeaders || {},
-            custom_cookies: config.customCookies || {},
-            dry_run: config.dryRun,
-            categories: config.categories,
-            enable_bola: config.enableBola,
-            bola_config: config.enableBola && config.bolaUserBToken ? {
-              user_a_auth: buildAuthConfig(config),
-              user_b_auth: { bearer: config.bolaUserBToken },
-            } : null,
-            enable_stateful: config.enableStateful,
-            enable_race: config.enableRace,
-            burst_size: config.burstSize,
-            enable_mutations: config.enableMutations,
-            enable_graphql: config.enableGraphql,
-          },
-        }),
+        body: JSON.stringify(payload),
       });
     } catch (err: any) {
       setIsRunning(false);
@@ -132,62 +322,116 @@ export default function DashboardInteractive() {
       return;
     }
 
-    const fetchStatus = async () => {
-      if (!scanId) return;
-      try {
-        const status = await apiFetch<any>(`/api/scan/${scanId}/status`);
-        setIsRunning(status.isRunning);
-        setProgress(status.progress);
-        setCasesRun(status.casesRun);
-        setTotalCases(status.totalCases);
+    startLiveUpdates();
+  }, [buildRunPayload, clearLiveUpdates, scanId, scanValidation, startLiveUpdates]);
 
-        let allFindings: Finding[] = status.findings || [];
-        if (config.dryRun && status.dry_run_log) {
-          const dryLog = status.dry_run_log.map((log: any, i: number) => ({
-            id: `dry-${i}`,
-            severity: "INFO",
-            type: "Dry Run (Skipped)",
-            endpoint: log.url,
-            method: log.method,
-            evidence: `Case ${log.id} for ${log.ep_key}`,
-            timestamp: new Date().toLocaleTimeString(),
-          }));
-          allFindings = [...allFindings, ...dryLog];
+  const handleCancelScan = useCallback(async () => {
+    if (!scanId || !isRunning) {
+      return;
+    }
+    try {
+      await apiFetch(`/api/scan/${scanId}/cancel`, {
+        method: "POST",
+      });
+      setIsCancelled(true);
+      startPolling();
+    } catch (err: any) {
+      setError(err.message || "Failed to cancel scan");
+    }
+  }, [isRunning, scanId, startPolling]);
+
+  useEffect(() => {
+    if (!isRunning) {
+      clearLiveUpdates();
+    }
+  }, [clearLiveUpdates, isRunning]);
+
+  useEffect(() => () => {
+    clearLiveUpdates();
+  }, [clearLiveUpdates]);
+
+  useEffect(() => {
+    if (!scanId || isRunning) {
+      return;
+    }
+
+    if (scanValidation.hasBlockingIssues) {
+      setPreviewCases({});
+      setTotalCases(0);
+      return;
+    }
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    const loadPreview = async () => {
+      let payload;
+      try {
+        payload = buildRunPayload();
+      } catch {
+        if (!cancelled) {
+          setPreviewCases({});
+          setTotalCases(0);
         }
-        setFindings(allFindings);
+        return;
+      }
+
+      try {
+        const res = await fetch(apiUrl(`/api/scan/${scanId}/preview`), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          throw new Error(await res.text());
+        }
+        const preview = await res.json() as ScanPreview;
+        if (!cancelled) {
+          setPreviewCases(preview.endpointCases || {});
+          setTotalCases(preview.totalCases || 0);
+        }
       } catch (err: any) {
-        setError(err.message || "Failed to fetch status");
+        if (!cancelled && err.name !== "AbortError") {
+          setPreviewCases({});
+          setTotalCases(0);
+          setError(err.message || "Failed to preview scan");
+        }
       }
     };
 
-    await fetchStatus();
+    void loadPreview();
 
-    if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = setInterval(fetchStatus, 1000);
-  }, [scanId, selectedEndpoints]);
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [buildRunPayload, isRunning, scanId, scanValidation.hasBlockingIssues]);
 
   useEffect(() => {
-    if (!isRunning && pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
+    if (!scanId) {
+      return;
     }
-  }, [isRunning]);
-
-  useEffect(() => () => {
-    if (pollRef.current) clearInterval(pollRef.current);
-  }, []);
+    void loadAttackGraph();
+  }, [loadAttackGraph, scanId]);
 
   const TABS: { id: Tab; label: string; icon: string; count?: number; disabled?: boolean }[] = [
     { id: "upload", label: "Ingest", icon: "ArrowUpTrayIcon" },
     { id: "endpoints", label: "Endpoints", icon: "ListBulletIcon", count: trafficData?.endpoints.length, disabled: !trafficData },
+    { id: "graph", label: "Attack Graph", icon: "ShareIcon", count: attackGraph?.paths.length, disabled: !trafficData },
     { id: "fuzz", label: "Fuzz Config", icon: "BoltIcon", disabled: !trafficData },
     { id: "findings", label: "Findings", icon: "ExclamationTriangleIcon", count: findings.length, disabled: !trafficData },
     { id: "shadow" as Tab, label: "Shadow API", icon: "EyeSlashIcon", disabled: !trafficData },
     { id: "patches" as Tab, label: "Patches", icon: "WrenchScrewdriverIcon", count: patches.length, disabled: !trafficData || findings.length === 0 },
   ];
 
-  const selectedEpData: EndpointData[] = trafficData?.endpoints.filter((e) => selectedEndpoints.includes(e.id)) ?? [];
-  const totalSelectedCases = selectedEpData.reduce((a, e) => a + e.fuzzCases, 0);
+  const handleApplyPreset = useCallback((preset: ScanPreset) => {
+    setActivePreset(preset);
+    setFuzzConfig((prev) => applyScanPreset(prev, preset, {
+      selectedEndpoints: selectedEpData,
+      capabilities: trafficData?.capabilities,
+    }));
+  }, [selectedEpData, trafficData?.capabilities]);
 
   return (
     <div className="min-h-screen pt-16">
@@ -228,13 +472,14 @@ export default function DashboardInteractive() {
               </div>
             )}
             {findings.length > 0 && scanId && (
-              <Link
-                href={`/reports?scan=${scanId}`}
-                className="flex items-center gap-1.5 px-3 py-1 font-mono text-[10px] text-[#6366F1] border border-[rgba(99, 102, 241,0.2)] rounded hover:bg-[rgba(99, 102, 241,0.08)] transition-all uppercase tracking-widest"
+              <a
+                href={apiUrl(`/api/scan/${scanId}/export.html`)}
+                download={`aase_report_${scanId}.html`}
+                className="flex items-center gap-1.5 px-3 py-1 font-mono text-[10px] text-[#030509] bg-[#00E676] rounded hover:bg-[#B9FBC0] hover:shadow-[0_0_15px_rgba(0,230,118,0.4)] transition-all uppercase tracking-widest font-bold"
               >
                 <Icon name="DocumentArrowDownIcon" size={12} />
-                View Report
-              </Link>
+                Download Executive Report
+              </a>
             )}
           </div>
         </div>
@@ -287,14 +532,20 @@ export default function DashboardInteractive() {
             <div className="lg:col-span-2" style={{ height: "600px" }}>
               <EndpointList
                 endpoints={trafficData.endpoints}
+                caseCountOverrides={previewCases}
                 selected={selectedEndpoints}
                 onSelectionChange={setSelectedEndpoints}
               />
             </div>
             <div>
               <FuzzConfig
+                config={fuzzConfig}
+                setConfig={setFuzzConfig}
                 selectedCount={selectedEndpoints.length}
                 totalCases={totalSelectedCases}
+                preset={activePreset}
+                onApplyPreset={handleApplyPreset}
+                validation={scanValidation}
                 onStart={handleStartFuzz}
                 isRunning={isRunning}
               />
@@ -305,12 +556,21 @@ export default function DashboardInteractive() {
         {activeTab === "fuzz" && trafficData && (
           <div className="max-w-xl mx-auto">
             <FuzzConfig
+              config={fuzzConfig}
+              setConfig={setFuzzConfig}
               selectedCount={selectedEndpoints.length}
               totalCases={totalSelectedCases}
+              preset={activePreset}
+              onApplyPreset={handleApplyPreset}
+              validation={scanValidation}
               onStart={handleStartFuzz}
               isRunning={isRunning}
             />
           </div>
+        )}
+
+        {activeTab === "graph" && trafficData && (
+          <AttackGraphPanel graph={attackGraph} loading={graphLoading} />
         )}
 
         {activeTab === "findings" && (
@@ -318,9 +578,11 @@ export default function DashboardInteractive() {
             <LiveFeed
               findings={findings}
               isRunning={isRunning}
+              isCancelled={isCancelled}
               progress={progress}
               casesRun={casesRun}
               totalCases={totalCases || totalSelectedCases || 0}
+              onCancel={handleCancelScan}
             />
           </div>
         )}

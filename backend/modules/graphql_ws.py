@@ -1,9 +1,9 @@
 """
 AASE Module 7: GraphQL & WebSocket Support
 ===========================================
-Detects GraphQL endpoints, runs introspection, generates
-fuzz queries. Detects WebSocket upgrades and generates
-frame-level fuzz cases.
+Detects GraphQL endpoints, runs introspection, and generates
+GraphQL fuzz queries. Detects WebSocket upgrades and generates
+HTTP-upgrade probe cases for those endpoints.
 """
 from __future__ import annotations
 
@@ -49,6 +49,27 @@ INTROSPECTION_QUERY = """{
 }"""
 
 GRAPHQL_PATH_RE = re.compile(r"/graphql\b", re.IGNORECASE)
+UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$")
+NUM_RE = re.compile(r"^\d+$")
+
+
+def _normalize_path(path: str) -> str:
+    parts = [segment for segment in path.split("/") if segment]
+    normalized = []
+    for segment in parts:
+        if NUM_RE.match(segment) or UUID_RE.match(segment):
+            normalized.append("{id}")
+        else:
+            normalized.append(segment)
+    return "/" + "/".join(normalized)
+
+
+def _match_endpoint_id(records_path: str, host: str, method: str, endpoints: dict) -> Optional[str]:
+    normalized_path = _normalize_path(records_path or "/")
+    for eid, ep in endpoints.items():
+        if ep.host == host and ep.method == method and ep.path == normalized_path:
+            return eid
+    return None
 
 
 def detect_graphql_endpoints(records: list, endpoints: dict) -> List[GraphQLEndpoint]:
@@ -75,11 +96,7 @@ def detect_graphql_endpoints(records: list, endpoints: dict) -> List[GraphQLEndp
         if is_gql:
             key = f"{parsed.netloc}:{parsed.path}"
             if key not in gql_eps:
-                ep_id = None
-                for eid, ep in endpoints.items():
-                    if ep.host == parsed.netloc and ep.method == rec.method:
-                        ep_id = eid
-                        break
+                ep_id = _match_endpoint_id(parsed.path or "/", parsed.netloc, rec.method, endpoints)
                 gql_eps[key] = GraphQLEndpoint(
                     endpoint_id=ep_id or f"gql_{uuid.uuid4().hex[:6]}",
                     url=rec.url,
@@ -247,11 +264,7 @@ def detect_ws_endpoints(records: list, endpoints: dict) -> List[WSEndpoint]:
             parsed = urlparse(rec.url)
             key = f"{parsed.netloc}:{parsed.path}"
             if key not in ws_eps:
-                ep_id = None
-                for eid, ep in endpoints.items():
-                    if ep.host == parsed.netloc:
-                        ep_id = eid
-                        break
+                ep_id = _match_endpoint_id(parsed.path or "/", parsed.netloc, rec.method, endpoints)
                 ws_url = rec.url.replace("http://", "ws://").replace("https://", "wss://")
                 ws_eps[key] = WSEndpoint(
                     endpoint_id=ep_id or f"ws_{uuid.uuid4().hex[:6]}",
@@ -352,7 +365,7 @@ def analyze_graphql_response(case, status_code, body):
                 "cwe": "CWE-200", "cvss": 5.3,
             }
 
-    if attack == "depth_dos" and status_code < 500:
+    if attack == "depth_dos" and status_code < 400:
         return {
             "severity": "LOW",
             "type": "GraphQL Missing Depth Limit",
@@ -385,7 +398,7 @@ def analyze_graphql_response(case, status_code, body):
                 "cwe": "CWE-200", "cvss": 3.5,
             }
 
-    if attack == "alias_dos" and status_code < 500:
+    if attack == "alias_dos" and status_code < 400:
         return {
             "severity": "LOW",
             "type": "GraphQL Alias DoS",

@@ -102,7 +102,7 @@ def _patch_for_auth(f):
 
 def _patch_for_bola(f):
     ep = f.get("endpoint","?")
-    return [_p(f,"BOLA/IDOR","python","Object-Level Authorization",
+    return [_p(f,"Cross-User Access Control Bypass","python","Object-Level Authorization",
         "Verify resource ownership before granting access.",
         f'''\
         async def verify_ownership(rid: str, user=Depends(require_auth), db=Depends(get_db)):
@@ -177,8 +177,25 @@ def _patch_for_graphql(f):
                 self.depth += 1
                 if self.depth > MAX_DEPTH:
                     self.report_error("Too deep")
-            def leave_field(self, *a):
-                self.depth -= 1
+             def leave_field(self, *a):
+                 self.depth -= 1
+         ''')]
+
+
+def _patch_for_ssrf(f):
+    return [_p(f,"Blind SSRF/OAST","python","Outbound Request Allowlist",
+        "Restrict outbound callbacks and validate user-controlled URLs before fetching them server-side.",
+        '''\
+        from urllib.parse import urlparse
+        ALLOWED_OUTBOUND_HOSTS = {"api.internal.local", "files.internal.local"}
+
+        def validate_outbound_url(candidate: str) -> str:
+            parsed = urlparse(candidate)
+            if parsed.scheme not in {"https"}:
+                raise HTTPException(400, "Unsupported URL scheme")
+            if parsed.hostname not in ALLOWED_OUTBOUND_HOSTS:
+                raise HTTPException(400, "Outbound host not allowed")
+            return candidate
         ''')]
 
 
@@ -188,15 +205,21 @@ _GENERATORS = {
     "auth_bypass": _patch_for_auth, "auth bypass": _patch_for_auth,
     "possible auth bypass": _patch_for_auth,
     "bola": _patch_for_bola, "bola/idor": _patch_for_bola, "idor": _patch_for_bola,
+    "cross-user access control bypass": _patch_for_bola,
     "race": _patch_for_race, "race condition": _patch_for_race,
     "race condition (toctou)": _patch_for_race,
     "stateful": _patch_for_stateful, "business logic": _patch_for_stateful,
     "business logic bypass (skip-step)": _patch_for_stateful,
     "business logic bypass (reverse order)": _patch_for_stateful,
     "replay/idempotency issue": _patch_for_race,
+    "workflow step bypass": _patch_for_stateful,
+    "workflow order bypass": _patch_for_stateful,
+    "workflow replay abuse": _patch_for_race,
+    "workflow state tampering": _patch_for_stateful,
     "mutation": _patch_for_mutation, "json mutation": _patch_for_mutation,
     "mass assignment": _patch_for_mutation, "prototype pollution": _patch_for_mutation,
     "graphql": _patch_for_graphql, "verbose error": _patch_for_mutation,
+    "confirmed blind callback/oast": _patch_for_ssrf, "ssrf": _patch_for_ssrf,
 }
 
 

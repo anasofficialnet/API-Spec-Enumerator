@@ -7,12 +7,14 @@ from __future__ import annotations
 import json
 import sys
 import os
+import importlib
 
 # Make the backend importable from this tests/ directory
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
 from fastapi.testclient import TestClient
+from modules.auto_recon import AutoReconEngine
 from main import (
     app,
     _normalize_path,
@@ -24,6 +26,7 @@ from main import (
     RunConfig,
     EndpointInfo,
     RequestRecord,
+    OASTEngine,
 )
 
 
@@ -187,6 +190,29 @@ def test_build_endpoints_deduplication():
     endpoints = _build_endpoints(records)
     assert len(endpoints) == 2  # /api/users/{id} and /api/users
 
+def test_build_endpoints_preserves_source_metadata():
+    records = [
+        RequestRecord("GET", "http://localhost:5000/api/users/1", {}, None, 200, source="seed_probe", discovery_status="confirmed"),
+        RequestRecord("GET", "http://localhost:5000/api/users/2", {}, None, 200, source="traffic"),
+        RequestRecord("GET", "http://localhost:5000/api/users/3", {}, None, 200, source="crawl", discovery_status="derived"),
+    ]
+    endpoints = _build_endpoints(records)
+    endpoint = next(iter(endpoints.values()))
+    assert endpoint.path == "/api/users/{id}"
+    assert endpoint.primary_source == "traffic"
+    assert endpoint.all_sources == ["traffic", "crawl", "seed_probe"]
+    assert endpoint.source_statuses["seed_probe"] == "confirmed"
+
+def test_build_endpoints_seed_probe_status_tracked():
+    records = [
+        RequestRecord("GET", "https://example.com/graphql", {}, None, 200, source="seed_probe", discovery_status="confirmed"),
+    ]
+    endpoints = _build_endpoints(records)
+    endpoint = next(iter(endpoints.values()))
+    assert endpoint.primary_source == "seed_probe"
+    assert endpoint.discovery_status == "confirmed"
+    assert endpoint.all_sources == ["seed_probe"]
+
 
 # ---------------------------------------------------------------------------
 # Unit Tests: fuzz case builder
@@ -260,6 +286,8 @@ def test_ingest_har():
     assert "scan_id" in data
     assert data["transactions"] == 2
     assert len(data["endpoints"]) >= 1
+    assert data["endpoints"][0]["primary_source"] == "traffic"
+    assert data["endpoints"][0]["all_sources"] == ["traffic"]
 
 def test_ingest_jsonl():
     response = client.post(
@@ -278,6 +306,110 @@ def test_ingest_paste():
     assert response.status_code == 200, response.text
     data = response.json()
     assert data["transactions"] == 2
+
+def test_ingest_paste_jsonl():
+    response = client.post(
+        "/api/ingest/paste",
+        json={"text": SAMPLE_JSONL.decode("utf-8")},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["transactions"] == 2
+    assert data["format"] == "jsonl"
+
+def test_auto_recon(monkeypatch):
+    async def fake_execute_recon(self):
+        return [
+            RequestRecord(
+                "GET",
+                "https://example.com/api/users",
+                {"Accept": "application/json"},
+                None,
+                200,
+                source="seed_probe",
+                discovery_status="confirmed",
+            )
+        ]
+
+    monkeypatch.setattr(AutoReconEngine, "execute_recon", fake_execute_recon)
+    try:
+        backend_auto_recon = importlib.import_module("backend.modules.auto_recon")
+    except ModuleNotFoundError:
+        backend_auto_recon = None
+    if backend_auto_recon is not None:
+        monkeypatch.setattr(backend_auto_recon.AutoReconEngine, "execute_recon", fake_execute_recon)
+
+    response = client.post("/api/recon", json={"target_url": "example.com"})
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["format"] == "auto_recon"
+    assert data["transactions"] == 1
+    assert "example.com" in data["hosts"]
+    assert len(data["endpoints"]) == 1
+    assert data["endpoints"][0]["primary_source"] == "seed_probe"
+    assert data["endpoints"][0]["discovery_status"] == "confirmed"
+
+def test_auto_recon_js_candidate_extraction():
+    engine = AutoReconEngine("https://example.com")
+    text = """
+    fetch(`/api/users/${userId}`);
+    axios.post("/orders");
+    const gql = "/graphql";
+    """
+    candidates = engine._extract_js_candidates(text, engine.base_url)
+    assert "https://example.com/api/users/1" in candidates
+    assert "https://example.com/orders" in candidates
+    assert "https://example.com/graphql" in candidates
+
+def test_auto_recon_source_map_reference_extraction():
+    engine = AutoReconEngine("https://example.com")
+    js = """
+    console.log("bundle");
+    //# sourceMappingURL=/_next/static/chunks/app.js.map
+    """
+    source_map = engine._extract_source_map_reference(js, "https://example.com/_next/static/chunks/app.js")
+    assert source_map == "https://example.com/_next/static/chunks/app.js.map"
+
+def test_auto_recon_source_map_candidate_extraction():
+    engine = AutoReconEngine("https://example.com")
+    payload = {
+        "version": 3,
+        "sources": [
+            "webpack://_N_E/./src/app/api/users/route.ts",
+        ],
+        "sourcesContent": [
+            "fetch('/api/orders'); axios.post('/graphql');",
+        ],
+    }
+    candidates = engine._extract_source_map_candidates(payload, "https://example.com/_next/static/chunks/app.js.map")
+    assert "https://example.com/api/users" in candidates
+    assert "https://example.com/api/orders" in candidates
+    assert "https://example.com/graphql" in candidates
+
+def test_auto_recon_json_response_path_extraction():
+    engine = AutoReconEngine("https://example.com")
+    found = set()
+    engine._extract_json_candidates(
+        {
+            "profile": "/api/profile",
+            "orders": ["/api/orders/55"],
+            "nested": {"audit": "/api/audit/9"},
+        },
+        engine.base_url,
+        found,
+    )
+    assert "https://example.com/api/profile" in found
+    assert "https://example.com/api/orders/55" in found
+    assert "https://example.com/api/audit/9" in found
+
+def test_auto_recon_spec_records_are_labeled():
+    engine = AutoReconEngine("https://example.com")
+    engine._record_spec_endpoint("POST", "/orders/{id}", ["amount"])
+    assert len(engine.records) == 1
+    record = engine.records[0]
+    assert record.source == "spec"
+    assert record.discovery_status == "derived"
+    assert record.url == "https://example.com/orders/1"
 
 def test_scan_status_initial():
     # Ingest first to get a scan_id
@@ -313,6 +445,83 @@ def test_dry_run_scan():
     assert run_res.status_code == 200
     assert run_res.json()["status"] == "started"
 
+def test_preview_scan():
+    res = client.post("/api/ingest", files={"file": ("sample.har", SAMPLE_HAR, "application/json")})
+    assert res.status_code == 200
+    data = res.json()
+    scan_id = data["scan_id"]
+    endpoint_ids = [e["id"] for e in data["endpoints"]]
+
+    preview = client.post(f"/api/scan/{scan_id}/preview", json={
+        "selected_endpoints": endpoint_ids,
+        "config": {
+            "allowlist": ["localhost"],
+            "target_base_url": "http://localhost:5000",
+            "dry_run": True,
+            "rate_limit": 100.0,
+            "concurrency": 1,
+            "categories": ["auth", "hidden_params", "cors"],
+        },
+    })
+    assert preview.status_code == 200, preview.text
+    body = preview.json()
+    assert body["totalCases"] == sum(body["endpointCases"].values())
+    assert body["totalCases"] > 0
+
+
+def test_cancel_scan_idle():
+    res = client.post("/api/ingest", files={"file": ("sample.har", SAMPLE_HAR, "application/json")})
+    assert res.status_code == 200
+    scan_id = res.json()["scan_id"]
+
+    cancel = client.post(f"/api/scan/{scan_id}/cancel")
+    assert cancel.status_code == 200
+    assert cancel.json()["status"] == "idle"
+
+
+def test_attack_graph_route():
+    res = client.post("/api/ingest", files={"file": ("sample.har", SAMPLE_HAR, "application/json")})
+    assert res.status_code == 200
+    scan_id = res.json()["scan_id"]
+
+    graph = client.get(f"/api/scan/{scan_id}/attack-graph")
+    assert graph.status_code == 200
+    body = graph.json()
+    assert "nodes" in body
+    assert "edges" in body
+    assert "paths" in body
+    assert len(body["nodes"]) >= 1
+
+
+def test_oast_callback_route():
+    OASTEngine.registry.clear()
+    res = client.post("/api/ingest", files={"file": ("sample.har", SAMPLE_HAR, "application/json")})
+    assert res.status_code == 200
+    data = res.json()
+    scan_id = data["scan_id"]
+    endpoint_id = data["endpoints"][0]["id"]
+
+    payload = OASTEngine.register_payload(
+        scan_id=scan_id,
+        endpoint_id=endpoint_id,
+        endpoint_path="/api/users",
+        vector_type="blind_ssrf_header",
+        callback_base_url="http://testserver",
+        request_url="http://localhost:5000/api/users",
+    )
+
+    callback = client.get(f"/api/oast/{payload['token']}")
+    assert callback.status_code == 200, callback.text
+
+    events = client.get(f"/api/scan/{scan_id}/oast")
+    assert events.status_code == 200
+    assert len(events.json()["events"]) == 1
+
+    report = client.get(f"/api/scan/{scan_id}/report")
+    assert report.status_code == 200
+    findings = report.json()["findings"]
+    assert any(f["type"] == "Confirmed Blind Callback/OAST" for f in findings)
+
 def test_export_json():
     res = client.post("/api/ingest", files={"file": ("sample.har", SAMPLE_HAR, "application/json")})
     scan_id = res.json()["scan_id"]
@@ -328,7 +537,7 @@ def test_export_html():
     export = client.get(f"/api/scan/{scan_id}/export.html")
     assert export.status_code == 200
     html = export.text
-    assert "CONFIDENTIAL" in html
+    assert "confidential" in html.lower()
     assert scan_id in html
 
 def test_404_on_missing_scan():

@@ -22,7 +22,7 @@ export default function HeroSection() {
 
           <p className="font-sans text-[#94A3B8] text-lg md:text-xl max-w-2xl mx-auto mb-10 leading-relaxed">
             AASE ingests your mitmproxy or Burp Suite captures, infers API schemas automatically,
-            generates intelligent fuzz cases, and reports real vulnerabilities - no manual spec writing.
+            generates intelligent fuzz cases, and reports live findings from real responses without manual spec writing.
           </p>
         </div>
 

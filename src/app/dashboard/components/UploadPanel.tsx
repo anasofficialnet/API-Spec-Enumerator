@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback } from "react";
 import Icon from "@/components/ui/AppIcon";
-import { API_BASE } from "@/lib/api";
+import { apiUrl } from "@/lib/api";
 
 interface UploadPanelProps {
   onUploadComplete: (data: TrafficData) => void;
@@ -15,6 +15,12 @@ export interface TrafficData {
   transactions: number;
   hosts: string[];
   endpoints: EndpointData[];
+  capabilities?: {
+    graphql?: boolean;
+    graphqlCount?: number;
+    websocket?: boolean;
+    websocketCount?: number;
+  };
 }
 
 export interface EndpointData {
@@ -28,9 +34,13 @@ export interface EndpointData {
   bodyFields: string[];
   schemaConfidence: number;
   fuzzCases: number;
+  primary_source?: string;
+  all_sources?: string[];
+  discovery_status?: string | null;
+  source_statuses?: Record<string, string>;
 }
 
-type UploadMode = "file" | "paste";
+type UploadMode = "file" | "paste" | "recon";
 
 export default function UploadPanel({ onUploadComplete }: UploadPanelProps) {
   const [mode, setMode] = useState<UploadMode>("file");
@@ -40,6 +50,7 @@ export default function UploadPanel({ onUploadComplete }: UploadPanelProps) {
   const [stage, setStage] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pasteText, setPasteText] = useState("");
+  const [reconUrl, setReconUrl] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
   const animateProgress = (onDone?: () => void) => {
@@ -73,6 +84,7 @@ export default function UploadPanel({ onUploadComplete }: UploadPanelProps) {
       transactions: data.transactions,
       hosts: data.hosts,
       endpoints: data.endpoints,
+      capabilities: data.capabilities,
     });
   };
 
@@ -85,7 +97,7 @@ export default function UploadPanel({ onUploadComplete }: UploadPanelProps) {
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch(`${API_BASE}/api/ingest`, {
+      const res = await fetch(apiUrl("/api/ingest"), {
         method: "POST",
         body: form,
       });
@@ -112,7 +124,7 @@ export default function UploadPanel({ onUploadComplete }: UploadPanelProps) {
     animateProgress();
 
     try {
-      const res = await fetch(`${API_BASE}/api/ingest/paste`, {
+      const res = await fetch(apiUrl("/api/ingest/paste"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: pasteText }),
@@ -128,6 +140,34 @@ export default function UploadPanel({ onUploadComplete }: UploadPanelProps) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pasteText, onUploadComplete]);
+
+  const submitRecon = useCallback(async () => {
+    if (!reconUrl.trim()) {
+      setError("Enter a target URL first");
+      return;
+    }
+    setError(null);
+    setUploading(true);
+    setProgress(0);
+    animateProgress();
+
+    try {
+      const res = await fetch(apiUrl("/api/recon"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target_url: reconUrl }),
+      });
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(msg || "Recon failed");
+      }
+      handleResponse(await res.json());
+    } catch (err: any) {
+      setUploading(false);
+      setError(err.message || "Recon failed");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reconUrl, onUploadComplete]);
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
@@ -152,7 +192,7 @@ export default function UploadPanel({ onUploadComplete }: UploadPanelProps) {
 
       {/* Mode tabs */}
       <div className="flex border-b border-[rgba(99, 102, 241,0.08)]">
-        {(["file", "paste"] as UploadMode[]).map((m) => (
+        {(["file", "paste", "recon"] as UploadMode[]).map((m) => (
           <button
             key={m}
             onClick={() => { setMode(m); setError(null); }}
@@ -161,7 +201,7 @@ export default function UploadPanel({ onUploadComplete }: UploadPanelProps) {
               : "text-[#94A3B8] border-b-2 border-transparent hover:text-[#6366F1]"
               }`}
           >
-            {m === "file" ? "Upload File" : "Paste HTTP"}
+            {m === "file" ? "Upload File" : m === "paste" ? "Paste HTTP" : "Auto-Recon"}
           </button>
         ))}
       </div>
@@ -216,7 +256,7 @@ export default function UploadPanel({ onUploadComplete }: UploadPanelProps) {
               <div className="space-y-4">
                 <div>
                   <label className="font-mono text-[10px] text-[#94A3B8] uppercase tracking-widest block mb-2">
-                    Paste Raw HTTP Requests
+                    Paste Raw HTTP or JSON Traces
                   </label>
                   <textarea
                     rows={14}
@@ -226,7 +266,7 @@ export default function UploadPanel({ onUploadComplete }: UploadPanelProps) {
                     className="w-full bg-[rgba(0,0,0,0.4)] border border-[rgba(99, 102, 241,0.12)] rounded px-3 py-2 font-mono text-xs text-[#F8FAFC] focus:outline-none focus:border-[rgba(99, 102, 241,0.4)] transition-colors resize-none"
                   />
                   <p className="font-mono text-[10px] text-[#475569] mt-1">
-                    Paste one or more HTTP requests separated by blank lines. Each request block should start with a method line (GET /path HTTP/1.1).
+                    Paste raw HTTP request blocks, JSON arrays, JSONL traces, or pasted HAR/mitmproxy JSON. HTTP blocks should start with a method line like GET /path HTTP/1.1.
                   </p>
                 </div>
                 <button
@@ -236,6 +276,36 @@ export default function UploadPanel({ onUploadComplete }: UploadPanelProps) {
                     }`}
                 >
                   Parse & Ingest
+                </button>
+              </div>
+            )}
+
+            {mode === "recon" && (
+              <div className="space-y-4">
+                <div>
+                  <label className="font-mono text-[10px] text-[#A78BFA] uppercase tracking-widest block mb-2 font-bold">
+                    Target Domain (Auto-Spidering)
+                  </label>
+                  <input
+                    type="text"
+                    value={reconUrl}
+                    onChange={(e) => setReconUrl(e.target.value)}
+                    placeholder="https://api.example.com"
+                    className="w-full bg-[rgba(0,0,0,0.4)] border border-[rgba(167,139,250,0.2)] rounded px-3 py-3 font-mono text-sm text-[#F8FAFC] focus:outline-none focus:border-[rgba(167,139,250,0.6)] transition-colors"
+                  />
+                  <p className="font-mono text-[10px] text-[#475569] mt-2">
+                    Enter a domain. The engine seeds common API/docs routes, then crawls same-host responses, follows discovered links, and expands real endpoints from Swagger/OpenAPI documents. No HAR files needed.
+                  </p>
+                </div>
+                <button
+                  onClick={submitRecon}
+                  disabled={!reconUrl.trim()}
+                  className={`w-full py-2.5 font-mono text-xs font-bold uppercase tracking-widest rounded transition-all ${reconUrl.trim() ? "bg-[#A78BFA] text-[#030509] hover:bg-[#8B5CF6] shadow-[0_0_15px_rgba(167,139,250,0.3)]" : "bg-[rgba(167,139,250,0.05)] text-[#475569] cursor-not-allowed border border-[rgba(167,139,250,0.08)]"
+                    }`}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    <Icon name="GlobeAltIcon" size={16} /> Auto-Discover Routes
+                  </div>
                 </button>
               </div>
             )}
