@@ -51,6 +51,7 @@ export default function UploadPanel({ onUploadComplete }: UploadPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [pasteText, setPasteText] = useState("");
   const [reconUrl, setReconUrl] = useState("");
+  const [passiveIntel, setPassiveIntel] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const animateProgress = (onDone?: () => void) => {
@@ -152,11 +153,23 @@ export default function UploadPanel({ onUploadComplete }: UploadPanelProps) {
     animateProgress();
 
     try {
-      const res = await fetch(apiUrl("/api/recon"), {
+      // Fire active spidering
+      const reconPromise = fetch(apiUrl("/api/recon"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ target_url: reconUrl }),
       });
+
+      // Fire passive intel in parallel (best-effort)
+      if (passiveIntel) {
+        const domain = reconUrl.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+        Promise.all([
+          fetch(apiUrl("/api/recon/passive"), { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ domain }) }).catch(() => null),
+          fetch(apiUrl("/api/recon/subdomains"), { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ domain }) }).catch(() => null),
+        ]).catch(() => { /* passive intel is best-effort */ });
+      }
+
+      const res = await reconPromise;
       if (!res.ok) {
         const msg = await res.text();
         throw new Error(msg || "Recon failed");
@@ -167,7 +180,7 @@ export default function UploadPanel({ onUploadComplete }: UploadPanelProps) {
       setError(err.message || "Recon failed");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reconUrl, onUploadComplete]);
+  }, [reconUrl, passiveIntel, onUploadComplete]);
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
@@ -297,6 +310,18 @@ export default function UploadPanel({ onUploadComplete }: UploadPanelProps) {
                     Enter a domain. The engine seeds common API/docs routes, then crawls same-host responses, follows discovered links, and expands real endpoints from Swagger/OpenAPI documents. No HAR files needed.
                   </p>
                 </div>
+                <label className="flex items-center gap-3 px-3 py-2.5 rounded border border-[rgba(167,139,250,0.15)] bg-[rgba(167,139,250,0.04)] cursor-pointer hover:bg-[rgba(167,139,250,0.08)] transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={passiveIntel}
+                    onChange={() => setPassiveIntel((p) => !p)}
+                    className="accent-[#A78BFA] w-4 h-4"
+                  />
+                  <div>
+                    <span className="font-mono text-xs text-[#F8FAFC] font-semibold">Enable Passive Intel</span>
+                    <p className="font-mono text-[10px] text-[#475569] mt-0.5">Wayback Machine, CommonCrawl, AlienVault OTX, crt.sh subdomains</p>
+                  </div>
+                </label>
                 <button
                   onClick={submitRecon}
                   disabled={!reconUrl.trim()}

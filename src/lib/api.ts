@@ -1,7 +1,7 @@
 const rawApiBase = (
   process.env.NEXT_PUBLIC_BACKEND_URL ||
   process.env.NEXT_PUBLIC_API_BASE ||
-  "/api"
+  ""
 ).replace(/\/+$/, "");
 
 export const API_BASE = rawApiBase.replace(/\/api$/, "");

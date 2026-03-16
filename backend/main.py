@@ -231,6 +231,12 @@ app.add_middleware(
         "http://127.0.0.1:4028",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
         "https://api-spec-enumerator.vercel.app",
         "https://api-spec-enumerator-vxy9.vercel.app",
     ],
@@ -1616,7 +1622,14 @@ async def scan_events(scan_id: str, request: Request):
             if await request.is_disconnected():
                 break
             progress = int((state.cases_run / state.total_cases) * 100) if state.total_cases else 0
-            signature = (progress, len(state.findings), state.last_error, state.is_cancelled, state.is_running)
+            signature = (
+                state.cases_run,
+                len(state.findings),
+                len(state.dry_run_log),
+                state.last_error,
+                state.is_cancelled,
+                state.is_running,
+            )
             if signature != last_signature:
                 payload = json.dumps({
                     "isRunning": state.is_running,
@@ -1625,6 +1638,7 @@ async def scan_events(scan_id: str, request: Request):
                     "casesRun": state.cases_run,
                     "totalCases": state.total_cases,
                     "findings": state.findings,
+                    "dry_run_log": state.dry_run_log,
                     "lastError": state.last_error,
                 })
                 yield f"data: {payload}\n\n"
@@ -1839,6 +1853,107 @@ async def get_oast_events(scan_id: str):
         raise HTTPException(status_code=404, detail="Scan not found")
     return {"events": OASTEngine.get_scan_events(scan_id)}
 
+
+# --- Power Feature Endpoints ---
+
+class PassiveReconRequest(BaseModel):
+    domain: str
+    include_js_analysis: bool = True
+
+@app.post("/api/recon/passive")
+async def passive_recon_endpoint(req: PassiveReconRequest):
+    """Run passive recon enrichment (Wayback, CommonCrawl, OTX, JS analysis)."""
+    try:
+        from modules.passive_recon import run_passive_recon
+    except ImportError:
+        from backend.modules.passive_recon import run_passive_recon
+    result = await run_passive_recon(req.domain)
+    return result.to_dict()
+
+
+class SubdomainRequest(BaseModel):
+    domain: str
+
+@app.post("/api/recon/subdomains")
+async def subdomain_discovery_endpoint(req: SubdomainRequest):
+    """Run subdomain discovery (crt.sh, DNS resolution, CORS testing)."""
+    try:
+        from modules.subdomain_discovery import run_subdomain_discovery
+    except ImportError:
+        from backend.modules.subdomain_discovery import run_subdomain_discovery
+    result = await run_subdomain_discovery(req.domain)
+    return result.to_dict()
+
+
+class ParamDiscoveryRequest(BaseModel):
+    selected_endpoints: List[str] = []
+    rate_limit: float = 5.0
+    concurrency: int = 3
+
+@app.post("/api/scan/{scan_id}/param-discovery")
+async def param_discovery_endpoint(scan_id: str, body: ParamDiscoveryRequest):
+    """Run parameter discovery (Arjun-style brute, Content-Type switching, method tampering)."""
+    state = SCANS.get(scan_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    try:
+        from modules.param_discovery import run_param_discovery
+    except ImportError:
+        from backend.modules.param_discovery import run_param_discovery
+    # Build endpoint list from scan state
+    endpoints = []
+    selected = set(body.selected_endpoints) if body.selected_endpoints else set(state.endpoints.keys())
+    for ep_id, ep in state.endpoints.items():
+        if ep_id in selected:
+            target_url = f"https://{ep.host}{ep.path}" if ep.host else ep.path
+            endpoints.append({"url": target_url, "method": ep.method, "content_type": "", "body": {}})
+    if not endpoints:
+        raise HTTPException(status_code=400, detail="No endpoints selected")
+    result = await run_param_discovery(endpoints, "", rate_limit=body.rate_limit, concurrency=body.concurrency)
+    return result.to_dict()
+
+
+class JWTAnalysisRequest(BaseModel):
+    token: Optional[str] = None
+    test_url: Optional[str] = None
+    test_method: str = "GET"
+
+@app.post("/api/scan/{scan_id}/jwt-analysis")
+async def jwt_analysis_endpoint(scan_id: str, body: JWTAnalysisRequest):
+    """Run JWT analysis (decode, alg:none, signature strip, expired replay)."""
+    state = SCANS.get(scan_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    try:
+        from modules.jwt_analyzer import analyze_jwt, decode_jwt, detect_jwts
+    except ImportError:
+        from backend.modules.jwt_analyzer import analyze_jwt, decode_jwt, detect_jwts
+    # Collect auth headers from scan state
+    headers: Dict[str, str] = {}
+    cookies: Dict[str, str] = {}
+    if state.stored_auth:
+        if state.stored_auth.bearer:
+            headers["Authorization"] = f"Bearer {state.stored_auth.bearer}"
+        headers.update(state.stored_auth.headers)
+        cookies.update(state.stored_auth.cookies)
+    # Also collect from traffic records
+    for rec in state.records[:20]:
+        for k, v in rec.headers.items():
+            if k.lower() in ("authorization", "x-auth-token", "x-api-key"):
+                headers[k] = v
+            if k.lower() == "cookie":
+                for pair in v.split(";"):
+                    if "=" in pair:
+                        ck, cv = pair.strip().split("=", 1)
+                        cookies[ck.strip()] = cv.strip()
+    # If explicit token provided, use it
+    if body.token:
+        headers["Authorization"] = f"Bearer {body.token}"
+    if not headers and not cookies:
+        return {"tokens": [], "attacks": [], "total_tokens": 0, "total_attacks": 0, "successful_attacks": 0,
+                "errors": ["No JWT tokens found in scan auth config or traffic headers"]}
+    result = await analyze_jwt(headers, cookies, test_url=body.test_url, test_method=body.test_method)
+    return result.to_dict()
 
 # -----------------------------
 # Scan engine

@@ -9,6 +9,7 @@ import AttackGraphPanel, { AttackGraphData } from "./AttackGraphPanel";
 import { applyScanPreset, buildScanValidation } from "./scanConfigUtils";
 import Icon from "@/components/ui/AppIcon";
 import { apiFetch, apiUrl } from "@/lib/api";
+import Link from "next/link";
 
 interface ScanStatus {
   isRunning: boolean;
@@ -26,7 +27,7 @@ interface ScanPreview {
   endpointCases: Record<string, number>;
 }
 
-type Tab = "upload" | "endpoints" | "graph" | "fuzz" | "findings" | "shadow" | "patches";
+type Tab = "upload" | "endpoints" | "graph" | "fuzz" | "findings" | "shadow" | "patches" | "oast";
 type ScanPreset = "safe" | "standard" | "aggressive";
 
 export const DEFAULT_FUZZ_CONFIG: FuzzSettings = {
@@ -78,6 +79,14 @@ export default function DashboardInteractive() {
   const [patches, setPatches] = useState<any[]>([]);
   const [attackGraph, setAttackGraph] = useState<AttackGraphData | null>(null);
   const [graphLoading, setGraphLoading] = useState(false);
+  const [oastCallbacks, setOastCallbacks] = useState<any[]>([]);
+  const [scanHasCompleted, setScanHasCompleted] = useState(false);
+  const [passiveRecon, setPassiveRecon] = useState<any>(null);
+  const [subdomainData, setSubdomainData] = useState<any>(null);
+  const [jwtAnalysis, setJwtAnalysis] = useState<any>(null);
+  const [paramDiscovery, setParamDiscovery] = useState<any>(null);
+  const [reconLoading, setReconLoading] = useState(false);
+  const [jwtLoading, setJwtLoading] = useState(false);
   const [fuzzConfig, setFuzzConfig] = useState<FuzzSettings>(DEFAULT_FUZZ_CONFIG);
   const [activePreset, setActivePreset] = useState<ScanPreset>("safe");
   const selectedEpData: EndpointData[] = trafficData?.endpoints.filter((e) => selectedEndpoints.includes(e.id)) ?? [];
@@ -202,6 +211,37 @@ export default function DashboardInteractive() {
       setError(status.lastError);
     }
 
+    // Mark scan as completed when it transitions from running to stopped
+    if (!status.isRunning && status.totalCases > 0 && status.casesRun >= status.totalCases) {
+      setScanHasCompleted(true);
+      setActiveTab("findings");
+      // Auto-run JWT analysis after scan completes
+      if (scanId) {
+        apiFetch<any>(`/api/scan/${scanId}/jwt-analysis`, {
+          method: "POST", headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({ test_url: fuzzConfig.targetUrl || null }),
+        }).then((data) => {
+          setJwtAnalysis(data);
+          if (data?.attacks) {
+            const jwtFindings = data.attacks
+              .filter((a: any) => a.success)
+              .map((a: any, idx: number) => ({
+                id: `jwt-${idx}`,
+                severity: "HIGH" as const,
+                type: `JWT ${a.attack_type}`,
+                endpoint: fuzzConfig.targetUrl || "auth",
+                method: "AUTH",
+                evidence: `${a.detail} (status: ${a.attack_status})`,
+                timestamp: new Date().toLocaleTimeString(),
+              }));
+            if (jwtFindings.length > 0) {
+              setFindings((prev) => [...prev, ...jwtFindings]);
+            }
+          }
+        }).catch(() => { /* JWT analysis is best-effort */ });
+      }
+    }
+
     let allFindings: Finding[] = status.findings || [];
     if (fuzzConfig.dryRun && status.dry_run_log) {
       const dryLog = status.dry_run_log.map((log, i) => ({
@@ -216,7 +256,19 @@ export default function DashboardInteractive() {
       allFindings = [...allFindings, ...dryLog];
     }
     setFindings(allFindings);
-  }, [fuzzConfig.dryRun]);
+  }, [fuzzConfig.dryRun, fuzzConfig.targetUrl, scanId]);
+
+  const fetchStatusOnce = useCallback(async () => {
+    if (!scanId) {
+      return;
+    }
+    try {
+      const status = await apiFetch<ScanStatus>(`/api/scan/${scanId}/status`);
+      applyStatus(status);
+    } catch (err: any) {
+      setError(err.message || "Failed to fetch status");
+    }
+  }, [applyStatus, scanId]);
 
   const loadAttackGraph = useCallback(async () => {
     if (!scanId) return;
@@ -234,19 +286,12 @@ export default function DashboardInteractive() {
   const startPolling = useCallback(() => {
     if (!scanId) return;
 
-    const fetchStatus = async () => {
-      try {
-        const status = await apiFetch<ScanStatus>(`/api/scan/${scanId}/status`);
-        applyStatus(status);
-      } catch (err: any) {
-        setError(err.message || "Failed to fetch status");
-      }
-    };
-
-    void fetchStatus();
+    void fetchStatusOnce();
     clearLiveUpdates();
-    pollRef.current = setInterval(fetchStatus, 1000);
-  }, [applyStatus, clearLiveUpdates, scanId]);
+    pollRef.current = setInterval(() => {
+      void fetchStatusOnce();
+    }, 1000);
+  }, [clearLiveUpdates, fetchStatusOnce, scanId]);
 
   const startLiveUpdates = useCallback(() => {
     if (!scanId) return;
@@ -268,6 +313,7 @@ export default function DashboardInteractive() {
         if (payload.done || (!payload.isRunning && payload.totalCases > 0 && payload.casesRun >= payload.totalCases)) {
           stream.close();
           streamRef.current = null;
+          void fetchStatusOnce();
         }
       } catch {
         // Fall back to polling if the stream payload becomes invalid.
@@ -281,7 +327,7 @@ export default function DashboardInteractive() {
       streamRef.current = null;
       startPolling();
     };
-  }, [applyStatus, clearLiveUpdates, scanId, startPolling]);
+  }, [applyStatus, clearLiveUpdates, fetchStatusOnce, scanId, startPolling]);
 
   const handleStartFuzz = useCallback(async () => {
     if (!scanId) {
@@ -409,11 +455,11 @@ export default function DashboardInteractive() {
   }, [buildRunPayload, isRunning, scanId, scanValidation.hasBlockingIssues]);
 
   useEffect(() => {
-    if (!scanId) {
+    if (!scanId || !scanHasCompleted) {
       return;
     }
     void loadAttackGraph();
-  }, [loadAttackGraph, scanId]);
+  }, [loadAttackGraph, scanId, scanHasCompleted]);
 
   const TABS: { id: Tab; label: string; icon: string; count?: number; disabled?: boolean }[] = [
     { id: "upload", label: "Ingest", icon: "ArrowUpTrayIcon" },
@@ -423,6 +469,7 @@ export default function DashboardInteractive() {
     { id: "findings", label: "Findings", icon: "ExclamationTriangleIcon", count: findings.length, disabled: !trafficData },
     { id: "shadow" as Tab, label: "Shadow API", icon: "EyeSlashIcon", disabled: !trafficData },
     { id: "patches" as Tab, label: "Patches", icon: "WrenchScrewdriverIcon", count: patches.length, disabled: !trafficData || findings.length === 0 },
+    { id: "oast" as Tab, label: "OAST", icon: "RocketLaunchIcon", count: oastCallbacks.length, disabled: !trafficData || !fuzzConfig.enableOast },
   ];
 
   const handleApplyPreset = useCallback((preset: ScanPreset) => {
@@ -470,6 +517,15 @@ export default function DashboardInteractive() {
                 <span>·</span>
                 <span>{trafficData.transactions.toLocaleString()} txns</span>
               </div>
+            )}
+            {findings.length > 0 && scanId && (
+              <Link
+                href={`/reports?scan=${scanId}`}
+                className="flex items-center gap-1.5 px-3 py-1 font-mono text-[10px] text-[#6366F1] border border-[rgba(99,102,241,0.3)] rounded hover:bg-[rgba(99,102,241,0.08)] transition-all uppercase tracking-widest font-bold"
+              >
+                <Icon name="DocumentTextIcon" size={12} />
+                View Full Report
+              </Link>
             )}
             {findings.length > 0 && scanId && (
               <a
@@ -648,6 +704,42 @@ export default function DashboardInteractive() {
             ))}
           </div>
         )}
+
+        {activeTab === "oast" && scanId && (
+          <div className="max-w-2xl mx-auto space-y-4">
+            <div className="terminal-window p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-mono text-xs text-[#FF4F4F] uppercase tracking-widest">OAST Callback Log</h3>
+                <button onClick={async () => {
+                  try {
+                    const data = await apiFetch<any>(`/api/scan/${scanId}/oast`);
+                    setOastCallbacks(data.callbacks || []);
+                  } catch (err: any) { setError(err.message); }
+                }} className="px-3 py-1 font-mono text-[10px] text-[#FF4F4F] border border-[rgba(255,79,79,0.25)] rounded hover:bg-[rgba(255,79,79,0.08)] transition-all uppercase tracking-widest">
+                  Refresh
+                </button>
+              </div>
+              <p className="font-mono text-[10px] text-[#475569] mb-4">Out-of-band callback interactions received by the OAST listener. Enable OAST in Fuzz Config and run a scan to see results.</p>
+              {oastCallbacks.length === 0 && (
+                <div className="font-mono text-xs text-[#475569] py-8 text-center">No OAST callbacks received yet.</div>
+              )}
+              {oastCallbacks.map((cb: any, i: number) => (
+                <div key={i} className="terminal-window p-3 mb-2">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-mono text-[10px] px-2 py-0.5 rounded uppercase tracking-wider badge-high">OAST</span>
+                    <span className="font-mono text-xs text-[#F8FAFC] font-semibold">{cb.method || "GET"} {cb.path || cb.token || "unknown"}</span>
+                  </div>
+                  <div className="font-mono text-[10px] text-[#94A3B8]">{cb.source_ip || ""} · {cb.timestamp || ""}</div>
+                  {cb.headers && (
+                    <pre className="mt-2 bg-[rgba(0,0,0,0.4)] rounded p-2 font-mono text-[10px] text-[#4FC3F7] whitespace-pre-wrap overflow-x-auto">{typeof cb.headers === "string" ? cb.headers : JSON.stringify(cb.headers, null, 2)}</pre>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+
       </div>
     </div>
   );

@@ -72,6 +72,7 @@ export interface FuzzSettings {
   enableWafEvasion?: boolean;
   enableOast?: boolean;
   oastCallbackUrl?: string;
+  enableParamDiscovery?: boolean;
 }
 
 const FUZZ_CATEGORIES = [
@@ -535,6 +536,16 @@ export default function FuzzConfig({
           </div>
 
           <div className="divide-y divide-[rgba(99,102,241,0.08)]">
+            <FeatureToggleRow
+              label="Parameter Discovery (Arjun-style)"
+              helpKey="enableParamDiscovery"
+              description="Brute-forces 150+ common params, tests Content-Type switching, and HTTP method tampering on each endpoint."
+              enabled={config.enableParamDiscovery}
+              onToggle={() => setConfig((prev) => ({ ...prev, enableParamDiscovery: !prev.enableParamDiscovery }))}
+              activeClassName="bg-[#4FC3F7]"
+              detailBorderClassName="border-[rgba(79,195,247,0.2)]"
+            />
+
             <FeatureToggleRow
               label="BOLA/IDOR Detection"
               helpKey="enableBola"

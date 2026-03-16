@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from main import app
+from main import SCANS, ScanState, app
 
 
 client = TestClient(app)
@@ -156,3 +156,31 @@ def test_preview_rejects_race_without_selected_write_endpoints():
 
     assert preview.status_code == 400
     assert "write endpoints" in preview.json()["detail"].lower()
+
+
+def test_scan_events_include_dry_run_log_for_completed_runs():
+    scan_id = "dry-run-events"
+    SCANS[scan_id] = ScanState(
+        scan_id=scan_id,
+        file_name="dry-run.har",
+        format="har",
+        records=[],
+        endpoints={},
+        is_running=False,
+        total_cases=2,
+        cases_run=2,
+        dry_run_log=[
+            {"id": "baseline", "method": "GET", "url": "http://localhost:5000/api/users", "ep_key": "ep-1"},
+            {"id": "cors_probe", "method": "GET", "url": "http://localhost:5000/api/users", "ep_key": "ep-1"},
+        ],
+    )
+    try:
+        with client.stream("GET", f"/api/scan/{scan_id}/events") as response:
+            assert response.status_code == 200
+            body = "".join(response.iter_text())
+    finally:
+        SCANS.pop(scan_id, None)
+
+    assert "\"dry_run_log\"" in body
+    assert "\"baseline\"" in body
+    assert "{\"done\": true}" in body
