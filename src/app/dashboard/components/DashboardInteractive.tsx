@@ -80,7 +80,6 @@ export default function DashboardInteractive() {
   const [attackGraph, setAttackGraph] = useState<AttackGraphData | null>(null);
   const [graphLoading, setGraphLoading] = useState(false);
   const [oastCallbacks, setOastCallbacks] = useState<any[]>([]);
-  const [scanHasCompleted, setScanHasCompleted] = useState(false);
   const [passiveRecon, setPassiveRecon] = useState<any>(null);
   const [subdomainData, setSubdomainData] = useState<any>(null);
   const [jwtAnalysis, setJwtAnalysis] = useState<any>(null);
@@ -213,7 +212,6 @@ export default function DashboardInteractive() {
 
     // Mark scan as completed when it transitions from running to stopped
     if (!status.isRunning && status.totalCases > 0 && status.casesRun >= status.totalCases) {
-      setScanHasCompleted(true);
       setActiveTab("findings");
       // Auto-run JWT analysis after scan completes
       if (scanId) {
@@ -344,6 +342,7 @@ export default function DashboardInteractive() {
     setProgress(0);
     setCasesRun(0);
     setIsCancelled(false);
+    setAttackGraph(null);
     setActiveTab("findings");
     clearLiveUpdates();
 
@@ -455,11 +454,11 @@ export default function DashboardInteractive() {
   }, [buildRunPayload, isRunning, scanId, scanValidation.hasBlockingIssues]);
 
   useEffect(() => {
-    if (!scanId || !scanHasCompleted) {
+    if (!scanId || isRunning) {
       return;
     }
     void loadAttackGraph();
-  }, [loadAttackGraph, scanId, scanHasCompleted]);
+  }, [isRunning, loadAttackGraph, scanId]);
 
   const TABS: { id: Tab; label: string; icon: string; count?: number; disabled?: boolean }[] = [
     { id: "upload", label: "Ingest", icon: "ArrowUpTrayIcon" },
