@@ -1,5 +1,7 @@
 {
   "name": "aase",
+  "author": "ANAS ABDUL AZIZ (@itsanzox)",
+  "license": "MIT",
   "version": "0.1.0",
   "private": true,
   "type": "module",

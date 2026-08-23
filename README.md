@@ -254,3 +254,10 @@ Generated local E2E outputs are written under:
   <b>Built with ❤️ by Anas, focusing on the future of clean, automated AppSec.</b><br/>
   <a href="https://github.com/anasofficialnet/API-Spec-Enumerator/issues">Report an issue</a> • <a href="https://github.com/anasofficialnet/API-Spec-Enumerator/pulls">Submit a pull request</a>
 </div>
+
+---
+
+## 👤 Author
+
+**© 2026 ANAS ABDUL AZIZ ([@itsanzox](https://github.com/itsanzox)). All rights reserved.**
+AASE is the original work of **ANAS ABDUL AZIZ (@itsanzox)**. The MIT license requires that this copyright notice be retained in all copies or substantial portions of the software.
